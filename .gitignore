@@ -8,7 +8,9 @@ node_modules/
 
 # Next.js
 /.next/
+/web/.next/
 /out/
+/web/out/
 
 # Production
 /build
@@ -39,3 +41,17 @@ next-env.d.ts
 *.swp
 *.swo
 *~
+
+# Mobile (React Native / Expo)
+mobile/.expo/
+mobile/dist/
+mobile/.expo-shared/
+mobile/ios/
+mobile/android/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+web-build/
