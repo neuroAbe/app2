@@ -39,13 +39,17 @@ Open [http://localhost:3000](http://localhost:3000)
 
 ## 📱 Mobile App (React Native)
 
-Native iOS and Android app built with Expo. **Coming Soon!**
+Native iOS and Android app built with Expo. **Now Available!**
+
+**[→ Go to Mobile App README](./mobile/README.md)**
 
 **Quick Start:**
 ```bash
 cd mobile
 npm install
+cp .env .env.local  # Add your Clerk and Supabase keys
 npm start
+# Scan QR code with Expo Go app
 ```
 
 ---
@@ -77,8 +81,16 @@ The database schema is in `shared/database/schema.sql` and is used by both web a
 - ✅ Database persistence
 - ✅ Landing page & responsive UI
 
-### Coming Soon (Mobile App)
-- 🚧 Native iOS & Android apps
+### Current (Mobile App)
+- ✅ Native iOS & Android apps (Expo)
+- ✅ Landing page & authentication
+- ✅ 3-step onboarding flow
+- ✅ Tab navigation (Game & Profile)
+- ✅ Profile management
+- ✅ Shared backend with web
+
+### Coming Soon (Mobile)
+- 🚧 Pokemon-style game world
 - 🚧 Touch controls (joystick & gestures)
 - 🚧 Push notifications
 - 🚧 Camera integration (photo verification)
