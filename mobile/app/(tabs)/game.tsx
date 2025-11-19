@@ -1,4 +1,4 @@
-import { View, Text, StyleSheet, Dimensions, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Dimensions, ScrollView, Alert } from 'react-native';
 import { useUser } from '@clerk/clerk-expo';
 import { useEffect, useState, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
@@ -6,10 +6,15 @@ import { Player } from '../../game/components/Player';
 import { Tile } from '../../game/components/Tile';
 import { VirtualJoystick } from '../../game/components/VirtualJoystick';
 import { generateStarterTown, WorldMap, checkCollision } from '../../game/utils/worldGenerator';
+import EncounterModal from '../../components/EncounterModal';
+import SafetyMenu from '../../components/SafetyMenu';
+import { encountersApi, matchesApi } from '../../lib/api';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const SCREEN_HEIGHT = Dimensions.get('window').height;
 const PLAYER_SIZE = 40;
+const ENCOUNTER_RADIUS = 150;
+const ENCOUNTER_CHECK_INTERVAL = 2000; // Check every 2 seconds
 
 export default function GameScreen() {
   const { user } = useUser();
@@ -22,6 +27,13 @@ export default function GameScreen() {
   const [cameraOffset, setCameraOffset] = useState({ x: 0, y: 0 });
   const [worldMap, setWorldMap] = useState<WorldMap | null>(null);
   const [inputVector, setInputVector] = useState({ x: 0, y: 0 });
+  const [nearbyUsers, setNearbyUsers] = useState<any[]>([]);
+
+  // Encounter state
+  const [encounterModalVisible, setEncounterModalVisible] = useState(false);
+  const [encounteredUser, setEncounteredUser] = useState<any>(null);
+  const [safetyMenuVisible, setSafetyMenuVisible] = useState(false);
+  const [lastEncounterCheck, setLastEncounterCheck] = useState(0);
 
   const animationFrameRef = useRef<number>();
 
@@ -42,6 +54,14 @@ export default function GameScreen() {
       if (inputVector.x !== 0 || inputVector.y !== 0) {
         updatePlayerPosition();
       }
+
+      // Check for nearby users periodically
+      const now = Date.now();
+      if (now - lastEncounterCheck > ENCOUNTER_CHECK_INTERVAL) {
+        checkForNearbyUsers();
+        setLastEncounterCheck(now);
+      }
+
       animationFrameRef.current = requestAnimationFrame(gameLoop);
     };
 
@@ -52,7 +72,7 @@ export default function GameScreen() {
         cancelAnimationFrame(animationFrameRef.current);
       }
     };
-  }, [inputVector, playerPosition, worldMap]);
+  }, [inputVector, playerPosition, worldMap, lastEncounterCheck]);
 
   const loadProfile = async () => {
     if (!user) return;
@@ -123,6 +143,7 @@ export default function GameScreen() {
           .update({
             position_x: Math.round(x),
             position_y: Math.round(y),
+            last_active: new Date().toISOString(),
           })
           .eq('clerk_user_id', user.id);
       } catch (err) {
@@ -137,6 +158,57 @@ export default function GameScreen() {
 
   const handleJoystickStop = () => {
     setInputVector({ x: 0, y: 0 });
+  };
+
+  const checkForNearbyUsers = async () => {
+    try {
+      const data = await encountersApi.getNearby();
+      setNearbyUsers(data.nearbyUsers || []);
+
+      // Trigger encounter if someone is very close and modal isn't already open
+      if (!encounterModalVisible && data.nearbyUsers && data.nearbyUsers.length > 0) {
+        const veryCloseUsers = data.nearbyUsers.filter(
+          (u: any) => u.distance < 50
+        );
+        if (veryCloseUsers.length > 0) {
+          triggerEncounter(veryCloseUsers[0]);
+        }
+      }
+    } catch (error) {
+      console.error('Failed to check for nearby users:', error);
+    }
+  };
+
+  const triggerEncounter = (user: any) => {
+    setEncounteredUser(user);
+    setEncounterModalVisible(true);
+  };
+
+  const handleAcceptEncounter = () => {
+    setEncounterModalVisible(false);
+    Alert.alert(
+      'Match Created!',
+      `You matched with ${encounteredUser?.display_name}! Check your matches to start chatting.`,
+      [{ text: 'OK' }]
+    );
+  };
+
+  const handleRejectEncounter = () => {
+    setEncounterModalVisible(false);
+    setEncounteredUser(null);
+  };
+
+  const handleCloseEncounter = () => {
+    setEncounterModalVisible(false);
+    setEncounteredUser(null);
+  };
+
+  const handleOpenSafetyMenu = () => {
+    setSafetyMenuVisible(true);
+  };
+
+  const handleCloseSafetyMenu = () => {
+    setSafetyMenuVisible(false);
   };
 
   if (loading) {
@@ -181,6 +253,49 @@ export default function GameScreen() {
             />
           ))}
 
+          {/* Render nearby players */}
+          {nearbyUsers.map((nearbyUser) => (
+            <View
+              key={nearbyUser.id}
+              style={{
+                position: 'absolute',
+                left: nearbyUser.position_x - 20,
+                top: nearbyUser.position_y - 20,
+              }}
+            >
+              <View
+                style={{
+                  width: 40,
+                  height: 40,
+                  borderRadius: 20,
+                  backgroundColor: nearbyUser.avatar_color,
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderWidth: 2,
+                  borderColor: '#fff',
+                }}
+              >
+                <Text style={{ color: '#fff', fontWeight: 'bold', fontSize: 16 }}>
+                  {nearbyUser.display_name.charAt(0).toUpperCase()}
+                </Text>
+              </View>
+              <Text
+                style={{
+                  fontSize: 10,
+                  color: '#fff',
+                  backgroundColor: 'rgba(0, 0, 0, 0.7)',
+                  paddingHorizontal: 4,
+                  paddingVertical: 2,
+                  borderRadius: 4,
+                  textAlign: 'center',
+                  marginTop: 2,
+                }}
+              >
+                {nearbyUser.display_name}
+              </Text>
+            </View>
+          ))}
+
           {/* Render player */}
           <Player
             x={playerPosition.x}
@@ -221,6 +336,26 @@ export default function GameScreen() {
             👆 Use the joystick to move around!
           </Text>
         </View>
+      )}
+
+      {/* Encounter Modal */}
+      <EncounterModal
+        visible={encounterModalVisible}
+        user={encounteredUser}
+        onAccept={handleAcceptEncounter}
+        onReject={handleRejectEncounter}
+        onClose={handleCloseEncounter}
+        onReportOrBlock={handleOpenSafetyMenu}
+      />
+
+      {/* Safety Menu */}
+      {encounteredUser && (
+        <SafetyMenu
+          visible={safetyMenuVisible}
+          userId={encounteredUser.id}
+          userName={encounteredUser.display_name}
+          onClose={handleCloseSafetyMenu}
+        />
       )}
     </View>
   );
