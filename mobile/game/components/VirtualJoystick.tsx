@@ -105,10 +105,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(139, 92, 246, 0.8)',
     borderWidth: 3,
     borderColor: '#fff',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 4,
+    boxShadow: '0px 2px 4px 0px rgba(0, 0, 0, 0.3)',
     elevation: 5,
   },
 });

@@ -52,10 +52,7 @@ const styles = StyleSheet.create({
     borderColor: '#fff',
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.3,
-    shadowRadius: 3,
+    boxShadow: '0px 2px 3px 0px rgba(0, 0, 0, 0.3)',
     elevation: 5,
   },
   directionIndicator: {
