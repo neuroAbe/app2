@@ -22,13 +22,25 @@ export default function SafetyMenu({ targetUserId, targetUsername, onClose }: Sa
 
     setIsSubmitting(true);
     try {
-      // TODO: Implement API call to block user
-      console.log('Blocking user:', targetUserId);
+      const response = await fetch('/api/safety/block', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ blockedUserId: targetUserId }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to block user');
+      }
+
       alert(`${targetUsername} has been blocked.`);
       onClose();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error blocking user:', error);
-      alert('Failed to block user. Please try again.');
+      alert(error.message || 'Failed to block user. Please try again.');
     } finally {
       setIsSubmitting(false);
     }
@@ -40,17 +52,29 @@ export default function SafetyMenu({ targetUserId, targetUsername, onClose }: Sa
 
     setIsSubmitting(true);
     try {
-      // TODO: Implement API call to report user
-      console.log('Reporting user:', {
-        userId: targetUserId,
-        reason: reportReason,
-        description: reportDescription,
+      const response = await fetch('/api/safety/report', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          reportedUserId: targetUserId,
+          reason: reportReason,
+          description: reportDescription,
+        }),
       });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to submit report');
+      }
+
       alert('Report submitted. Our moderation team will review it shortly.');
       onClose();
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error reporting user:', error);
-      alert('Failed to submit report. Please try again.');
+      alert(error.message || 'Failed to submit report. Please try again.');
     } finally {
       setIsSubmitting(false);
     }

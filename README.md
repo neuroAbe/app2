@@ -94,18 +94,34 @@ npm install
 cp .env.example .env.local
 ```
 
-Then edit `.env.local` and add your Clerk API keys:
+Then edit `.env.local` and add your API keys:
+
+**Clerk (Authentication):**
 - Go to [https://dashboard.clerk.com](https://dashboard.clerk.com)
 - Create a new application
 - Copy your Publishable and Secret keys
 - Paste them into `.env.local`
 
-4. Run the development server
+**Supabase (Database):**
+- Go to [https://supabase.com](https://supabase.com)
+- Create a new project (free tier works great)
+- Copy your Project URL and anon/public key
+- Paste them into `.env.local`
+- See [SUPABASE_SETUP.md](./SUPABASE_SETUP.md) for detailed instructions
+
+4. Set up the database
+```bash
+# Copy the SQL schema from database/schema.sql
+# Paste and run it in your Supabase SQL Editor
+# See SUPABASE_SETUP.md for step-by-step guide
+```
+
+5. Run the development server
 ```bash
 npm run dev
 ```
 
-5. Open [http://localhost:3000](http://localhost:3000) in your browser
+6. Open [http://localhost:3000](http://localhost:3000) in your browser
 
 ### How to Use
 

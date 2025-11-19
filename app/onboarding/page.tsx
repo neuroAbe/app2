@@ -8,6 +8,8 @@ export default function OnboardingPage() {
   const { user } = useUser();
   const router = useRouter();
   const [step, setStep] = useState(1);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState('');
   const [profile, setProfile] = useState({
     displayName: '',
     age: '',
@@ -33,11 +35,31 @@ export default function OnboardingPage() {
   };
 
   const handleSubmit = async () => {
-    // TODO: Save profile to database
-    console.log('Profile to save:', profile);
+    setIsSubmitting(true);
+    setError('');
 
-    // For now, just redirect to game
-    router.push('/game');
+    try {
+      const response = await fetch('/api/profile', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(profile),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to create profile');
+      }
+
+      // Success! Redirect to game
+      router.push('/game');
+    } catch (err: any) {
+      console.error('Error creating profile:', err);
+      setError(err.message || 'Failed to create profile. Please try again.');
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -197,18 +219,26 @@ export default function OnboardingPage() {
               </ul>
             </div>
 
+            {error && (
+              <div className="mt-4 p-4 bg-red-900 bg-opacity-30 border border-red-700 rounded-lg">
+                <p className="text-red-200 text-sm">{error}</p>
+              </div>
+            )}
+
             <div className="flex gap-4 mt-6">
               <button
                 onClick={() => setStep(2)}
-                className="flex-1 px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition"
+                disabled={isSubmitting}
+                className="flex-1 px-6 py-3 bg-gray-600 text-white rounded-lg hover:bg-gray-700 disabled:bg-gray-700 disabled:cursor-not-allowed transition"
               >
                 Back
               </button>
               <button
                 onClick={handleSubmit}
-                className="flex-1 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 transition"
+                disabled={isSubmitting}
+                className="flex-1 px-6 py-3 bg-green-600 text-white rounded-lg hover:bg-green-700 disabled:bg-gray-600 disabled:cursor-not-allowed transition"
               >
-                Start Your Adventure!
+                {isSubmitting ? 'Creating Profile...' : 'Start Your Adventure!'}
               </button>
             </div>
           </div>
