@@ -1,6 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { auth } from '@clerk/nextjs/server';
-import { supabase } from '@/lib/supabase';
+import { createServerSupabaseClient } from '@/lib/supabase-server';
+
+// UUID validation regex
+const UUID_REGEX = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // POST - Block a user
 export async function POST(req: NextRequest) {
@@ -20,6 +23,17 @@ export async function POST(req: NextRequest) {
         { status: 400 }
       );
     }
+
+    // CRITICAL: Validate blockedUserId is a valid UUID
+    if (typeof blockedUserId !== 'string' || !UUID_REGEX.test(blockedUserId)) {
+      return NextResponse.json(
+        { error: 'Invalid user ID format' },
+        { status: 400 }
+      );
+    }
+
+    // Create authenticated Supabase client
+    const supabase = await createServerSupabaseClient();
 
     // Get blocker profile
     const { data: blockerProfile } = await supabase
@@ -43,7 +57,21 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Check if already blocked
+    // Verify blocked user exists and is accessible
+    const { data: blockedProfile } = await supabase
+      .from('user_profiles')
+      .select('id')
+      .eq('id', blockedUserId)
+      .single();
+
+    if (!blockedProfile) {
+      return NextResponse.json(
+        { error: 'User to block not found or inaccessible' },
+        { status: 404 }
+      );
+    }
+
+    // Check if already blocked (RLS will filter to blocker's blocks only)
     const { data: existing } = await supabase
       .from('blocked_users')
       .select('id')
@@ -58,7 +86,7 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Create block
+    // Create block - RLS ensures blocker_id matches authenticated user
     const { data: block, error: blockError } = await supabase
       .from('blocked_users')
       .insert({
@@ -69,6 +97,13 @@ export async function POST(req: NextRequest) {
       .single();
 
     if (blockError) {
+      // Handle database constraint violations
+      if (blockError.code === '23505') {
+        return NextResponse.json(
+          { error: 'User already blocked' },
+          { status: 409 }
+        );
+      }
       throw blockError;
     }
 
@@ -103,6 +138,17 @@ export async function DELETE(req: NextRequest) {
         { status: 400 }
       );
     }
+
+    // CRITICAL: Validate blockedUserId is a valid UUID
+    if (typeof blockedUserId !== 'string' || !UUID_REGEX.test(blockedUserId)) {
+      return NextResponse.json(
+        { error: 'Invalid user ID format' },
+        { status: 400 }
+      );
+    }
+
+    // Create authenticated Supabase client
+    const supabase = await createServerSupabaseClient();
 
     // Get blocker profile
     const { data: blockerProfile } = await supabase
