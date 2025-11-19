@@ -1,265 +1,184 @@
-# PixelMatch - Pokemon-Style Dating Game
+# PixelMatch - Pokemon-Style Dating App
 
-A unique dating application that combines nostalgic Pokemon-style gameplay with modern social connection. Users explore a 2D pixel world, encounter other real users, and strike up conversations in a fun, low-pressure environment.
+A unique dating application that combines nostalgic Pokemon-style gameplay with modern social connection. Available on **Web** and **Mobile** (iOS & Android).
 
-## Concept
+## 📱 Project Structure
 
-PixelMatch reimagines online dating by:
-- **Gamifying the experience** - Turn dating into an adventure
-- **Reducing pressure** - Organic encounters feel more natural than swiping
-- **Nostalgia factor** - Pixel art and Game Boy-style gameplay
-- **Fun first** - Build connections through shared exploration
+This is a **monorepo** containing both web and mobile applications sharing a common backend.
 
-## Tech Stack
-
-- **Frontend**: Next.js 16 (App Router) + TypeScript
-- **Game Engine**: Phaser.js 3.9
-- **Styling**: Tailwind CSS 4
-- **Authentication**: Clerk (email, phone verification, OAuth)
-- **Database** (planned): PostgreSQL with Row Level Security
-- **Real-time** (planned): Socket.io or Supabase Realtime
-
-## Current Features
-
-### ✅ Phase 1: Core Gameplay (Complete)
-- [x] Next.js 16 project with TypeScript & Tailwind CSS
-- [x] Phaser.js 3.9 game engine integration
-- [x] Player character with smooth movement (Arrow keys or WASD)
-- [x] 2D town world with buildings and collision detection
-- [x] Camera system that follows player
-- [x] Pixel-perfect retro aesthetic rendering
-
-### ✅ Phase 2: Authentication & Safety (Complete)
-- [x] **Clerk Authentication Integration**
-  - Email & phone verification
-  - OAuth support (Google, Apple, etc.)
-  - Secure session management
-  - Protected routes middleware
-- [x] **Landing Page** with sign-up/sign-in flows
-- [x] **Onboarding System**
-  - 3-step profile creation
-  - Avatar customization (color selection)
-  - Interest selection
-  - Age verification (18+)
-  - Safety guidelines display
-- [x] **Safety Components**
-  - Report user functionality
-  - Block user functionality
-  - Safety tips and guidelines
-  - In-game safety menu
-- [x] **Database Schema Design**
-  - User profiles with verification levels
-  - Reports & moderation system
-  - Block list management
-  - Match system structure
-  - Message system with toxicity scoring
-  - Row Level Security policies
-
-### 🚧 In Progress
-- API routes for safety features
-- Database integration (Supabase or PostgreSQL)
-- Verification badge system
-
-### 📋 Planned Features (Phase 3+)
-- **Encounter System**: Location-based user discovery
-- **Real-time Chat**: WebSocket messaging between matched users
-- **Multiple Towns**: Expandable world map
-- **Quest System**: Daily challenges and achievements
-- **Profile Cards**: Pokemon "Trainer card" style profiles
-- **Photo Verification**: Selfie + ID matching
-- **Content Moderation**: AI-powered message filtering
-
-## Getting Started
-
-### Prerequisites
-```bash
-Node.js 18+ installed
+```
+pixelmatch/
+├── web/                    # Next.js web application
+├── mobile/                 # Expo React Native mobile app (iOS/Android)
+├── shared/                 # Shared code between web and mobile
+│   ├── types/             # TypeScript types
+│   └── database/          # Database schema
+├── MOBILE_MIGRATION_PLAN.md
+├── SUPABASE_SETUP.md
+└── README.md (this file)
 ```
 
-### Installation
+##🌐 Web App (Next.js)
 
-1. Clone the repository
-```bash
-git clone <repo-url>
-cd app2
-```
+Full-featured web application with game engine, authentication, and database integration.
 
-2. Install dependencies
+**[→ Go to Web App README](./web/README.md)**
+
+**Quick Start:**
 ```bash
+cd web
 npm install
-```
-
-3. Set up environment variables
-```bash
 cp .env.example .env.local
-```
-
-Then edit `.env.local` and add your API keys:
-
-**Clerk (Authentication):**
-- Go to [https://dashboard.clerk.com](https://dashboard.clerk.com)
-- Create a new application
-- Copy your Publishable and Secret keys
-- Paste them into `.env.local`
-
-**Supabase (Database):**
-- Go to [https://supabase.com](https://supabase.com)
-- Create a new project (free tier works great)
-- Copy your Project URL and anon/public key
-- Paste them into `.env.local`
-- See [SUPABASE_SETUP.md](./SUPABASE_SETUP.md) for detailed instructions
-
-4. Set up the database
-```bash
-# Copy the SQL schema from database/schema.sql
-# Paste and run it in your Supabase SQL Editor
-# See SUPABASE_SETUP.md for step-by-step guide
-```
-
-5. Run the development server
-```bash
+# Add your Clerk and Supabase keys to .env.local
 npm run dev
 ```
 
-6. Open [http://localhost:3000](http://localhost:3000) in your browser
+Open [http://localhost:3000](http://localhost:3000)
 
-### How to Use
+---
 
-1. **Sign Up**: Click "Start Your Adventure" on the landing page
-2. **Verify**: Complete email/phone verification (Clerk handles this)
-3. **Onboarding**: Fill out your profile (3-step process)
-4. **Play**: Use **Arrow Keys** or **WASD** to explore the world
-5. **Safety**: Press `ESC` to access the safety menu (coming soon)
+## 📱 Mobile App (React Native)
 
-## Project Structure
+Native iOS and Android app built with Expo. **Coming Soon!**
 
-```
-app2/
-├── app/                    # Next.js App Router
-│   ├── sign-in/           # Clerk sign-in page
-│   ├── sign-up/           # Clerk sign-up page
-│   ├── onboarding/        # 3-step profile creation
-│   ├── game/              # Protected game route
-│   ├── globals.css        # Global styles + Tailwind
-│   ├── layout.tsx         # Root layout with ClerkProvider
-│   └── page.tsx           # Landing page
-├── components/            # React components
-│   ├── GameCanvas.tsx     # Phaser game wrapper
-│   └── SafetyMenu.tsx     # Report/block UI component
-├── game/                  # Game logic
-│   ├── scenes/            # Phaser scenes
-│   │   └── MainScene.ts   # Main game scene
-│   └── sprites/           # Game sprites
-│       └── Player.ts      # Player character
-├── types/                 # TypeScript types
-│   └── database.ts        # Database schema types
-├── database/              # Database files
-│   └── schema.sql         # PostgreSQL schema
-├── public/                # Static assets
-│   └── assets/            # Game assets
-├── middleware.ts          # Clerk auth middleware
-├── .env.example           # Environment variables template
-└── package.json
+**Quick Start:**
+```bash
+cd mobile
+npm install
+npm start
 ```
 
-## Development Roadmap
+---
 
-### Phase 1: Core Gameplay ✅
-- ✅ Basic game world with Phaser.js
-- ✅ Player movement and controls
-- ✅ Town environment with collision
-- ✅ Camera system
+## 🔗 Shared Backend
 
-### Phase 2: Authentication & Safety ✅
-- ✅ Clerk authentication integration
-- ✅ User onboarding flow
-- ✅ Profile creation with age verification
-- ✅ Safety UI components (report/block)
-- ✅ Database schema with RLS
-- ✅ Landing page and auth routes
+Both apps share the same backend infrastructure:
 
-### Phase 3: Database & API (Next)
-- Database deployment (Supabase or PostgreSQL)
-- API routes for CRUD operations
-- Profile storage and retrieval
-- Safety features implementation
-- Verification badge system
+- **Authentication**: Clerk (email, phone, OAuth)
+- **Database**: Supabase PostgreSQL with Row Level Security
+- **API**: REST APIs for profiles, safety features, matches
+- **Storage**: Supabase Storage for user photos
 
-### Phase 4: Real-Time Features
-- User presence system (who's online/where)
-- Location-based encounter matching
-- WebSocket chat system
-- Match notifications
-- Real-time player positions
+### Database Setup
 
-### Phase 5: Content & Engagement
-- Multiple towns and areas
-- Quest system and achievements
-- Badge collection
-- Daily challenges
-- Event system
+See [SUPABASE_SETUP.md](./SUPABASE_SETUP.md) for detailed database configuration instructions.
 
-### Phase 6: Advanced Safety
-- Photo verification (selfie + ID)
-- AI content moderation (Perspective API)
-- Toxicity scoring for messages
-- Automated moderation queue
-- Appeals system
+The database schema is in `shared/database/schema.sql` and is used by both web and mobile apps.
 
-### Phase 7: Polish & Scale
-- Mini-games for matched users
-- Enhanced avatar customization
-- Mobile app (React Native)
-- Sound effects and music
-- Performance optimization
-- Analytics and monitoring
+---
 
-## Safety & Verification Features
+## ✨ Features
 
-PixelMatch takes user safety seriously with a multi-layered approach:
+### Current (Web App)
+- ✅ Pokemon-style 2D game world
+- ✅ User authentication & verification
+- ✅ 3-step onboarding with profile creation
+- ✅ Safety features (report/block)
+- ✅ Database persistence
+- ✅ Landing page & responsive UI
 
-### Current Safety Implementation
-- **Age Verification**: 18+ requirement enforced at signup
-- **Email & Phone Verification**: Required via Clerk before accessing the game
+### Coming Soon (Mobile App)
+- 🚧 Native iOS & Android apps
+- 🚧 Touch controls (joystick & gestures)
+- 🚧 Push notifications
+- 🚧 Camera integration (photo verification)
+- 🚧 App Store & Play Store distribution
+
+### Planned (Both Platforms)
+- Real-time user presence
+- Location-based encounters
+- In-game chat system
+- Multiple towns & areas
+- Quest system & achievements
+- Photo verification
+
+---
+
+## 🚀 Tech Stack
+
+### Web
+- Next.js 16 (App Router)
+- TypeScript
+- Phaser.js (game engine)
+- Tailwind CSS
+- Clerk (auth)
+- Supabase (database)
+
+### Mobile
+- Expo SDK 51+
+- React Native
+- TypeScript
+- React Native Game Engine
+- Clerk Expo SDK
+- Supabase
+
+### Shared
+- PostgreSQL (Supabase)
+- REST APIs
+- TypeScript types
+- Database schema
+
+---
+
+## 📖 Documentation
+
+- **[Web App README](./web/README.md)** - Web-specific setup and features
+- **[Mobile Migration Plan](./MOBILE_MIGRATION_PLAN.md)** - Strategy for mobile app development
+- **[Supabase Setup](./SUPABASE_SETUP.md)** - Database configuration guide
+
+---
+
+## 🔒 Safety & Security
+
+PixelMatch prioritizes user safety:
+
+- **Age Verification**: 18+ enforcement
+- **Identity Verification**: Email & phone required
 - **Report System**: Users can report inappropriate behavior
 - **Block System**: Instant blocking prevents future encounters
-- **Safety Guidelines**: Displayed during onboarding
-- **Row Level Security**: Database policies prevent unauthorized data access
+- **Row Level Security**: Database-level access control
+- **Content Moderation**: Planned AI-powered filtering
 
-### Planned Safety Features
-- **Photo Verification**: Selfie matching with profile photos
-- **ID Verification**: Government ID checking via Onfido/Persona
-- **Verification Badges**: Visual indicators of verified users
-- **Content Moderation**: AI-powered message filtering
-- **Toxicity Scoring**: Automatic flagging of harmful messages
-- **Rate Limiting**: Prevent spam and harassment
-- **Moderation Queue**: Manual review of flagged content
-- **Automated Actions**: Auto-ban on multiple valid reports
+See [Supabase Setup](./SUPABASE_SETUP.md) for security configuration details.
 
-### Database Security
-- Row Level Security (RLS) policies on all tables
-- Encrypted sensitive data
-- Audit logs for safety incidents
-- GDPR-compliant data handling
-- User data isolation
+---
 
-## Why This Portfolio Piece Works
+## 📱 App Store Deployment
 
-1. **Unique Concept** - Stands out from typical CRUD apps
-2. **Technical Complexity** - Game engine, auth, real-time features, safety systems
-3. **Multiple Disciplines** - Frontend, backend, game dev, UX, security
-4. **Safety-First Approach** - Shows understanding of real-world responsibilities
-5. **Scalability Story** - Clear path from MVP to full product
-6. **Conversation Starter** - Memorable in interviews and demos
+### iOS (App Store)
+- Requires Apple Developer account ($99/year)
+- Build with EAS Build
+- Submit via App Store Connect
 
-## Contributing
+### Android (Play Store)
+- Requires Google Play Console ($25 one-time)
+- Build with EAS Build
+- Submit via Play Console
 
-This is a portfolio project, but suggestions and feedback are welcome!
+See [Mobile Migration Plan](./MOBILE_MIGRATION_PLAN.md) for deployment checklist.
 
-## License
+---
+
+## 🤝 Contributing
+
+This is a portfolio project showcasing full-stack development capabilities.
+
+---
+
+## 📄 License
 
 MIT
 
-## Contact
+---
 
-Built to showcase full-stack development capabilities for app agency portfolio.
+## 🎯 Why This Project?
+
+1. **Unique Concept** - Pokemon-style dating stands out
+2. **Cross-Platform** - Web + iOS + Android from one codebase
+3. **Safety-First** - Production-ready security features
+4. **Scalable Architecture** - Monorepo with shared backend
+5. **Portfolio Showcase** - Demonstrates full-stack + mobile skills
+
+---
+
+Built with ❤️ to showcase app development agency capabilities.
