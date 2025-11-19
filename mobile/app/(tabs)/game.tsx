@@ -64,12 +64,21 @@ export default function GameScreen() {
         .eq('clerk_user_id', user.id)
         .single();
 
-      if (error) throw error;
-      setProfile(data);
+      if (error) {
+        // PGRST116 means no rows found
+        if (error.code === 'PGRST116') {
+          console.log('No profile found for user');
+          setProfile(null);
+        } else {
+          throw error;
+        }
+      } else {
+        setProfile(data);
 
-      // Set initial player position from profile
-      if (data.position_x && data.position_y) {
-        setPlayerPosition({ x: data.position_x, y: data.position_y });
+        // Set initial player position from profile
+        if (data.position_x && data.position_y) {
+          setPlayerPosition({ x: data.position_x, y: data.position_y });
+        }
       }
     } catch (err) {
       console.error('Failed to load profile:', err);

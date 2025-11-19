@@ -25,8 +25,17 @@ export default function ProfileScreen() {
         .eq('clerk_user_id', user.id)
         .single();
 
-      if (error) throw error;
-      setProfile(data);
+      if (error) {
+        // PGRST116 means no rows found
+        if (error.code === 'PGRST116') {
+          console.log('No profile found for user');
+          setProfile(null);
+        } else {
+          throw error;
+        }
+      } else {
+        setProfile(data);
+      }
     } catch (err) {
       console.error('Failed to load profile:', err);
     } finally {
