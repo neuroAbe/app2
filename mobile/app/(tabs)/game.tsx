@@ -1,11 +1,13 @@
-import { View, Text, StyleSheet, Dimensions, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, Dimensions, ScrollView, TouchableOpacity } from 'react-native';
 import { useUser } from '@clerk/clerk-expo';
 import { useEffect, useState, useRef } from 'react';
 import { supabase } from '../../lib/supabase';
 import { Player } from '../../game/components/Player';
 import { Tile } from '../../game/components/Tile';
 import { VirtualJoystick } from '../../game/components/VirtualJoystick';
+import { EncounterModal } from '../../game/components/EncounterModal';
 import { generateStarterTown, WorldMap, checkCollision } from '../../game/utils/worldGenerator';
+import { getRandomUser, MockUser } from '../../game/data/mockUsers';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
 const SCREEN_HEIGHT = Dimensions.get('window').height;
@@ -22,6 +24,11 @@ export default function GameScreen() {
   const [cameraOffset, setCameraOffset] = useState({ x: 0, y: 0 });
   const [worldMap, setWorldMap] = useState<WorldMap | null>(null);
   const [inputVector, setInputVector] = useState({ x: 0, y: 0 });
+
+  // Encounter state
+  const [encounterVisible, setEncounterVisible] = useState(false);
+  const [currentEncounter, setCurrentEncounter] = useState<MockUser | null>(null);
+  const [matches, setMatches] = useState<string[]>([]);
 
   const animationFrameRef = useRef<number>();
 
@@ -139,6 +146,25 @@ export default function GameScreen() {
     setInputVector({ x: 0, y: 0 });
   };
 
+  const handleTriggerEncounter = () => {
+    // Get random user
+    const randomUser = getRandomUser();
+    setCurrentEncounter(randomUser);
+    setEncounterVisible(true);
+  };
+
+  const handleCloseEncounter = () => {
+    setEncounterVisible(false);
+    setCurrentEncounter(null);
+  };
+
+  const handleMatch = (userId: string) => {
+    // Add to matches
+    setMatches([...matches, userId]);
+    console.log('Matched with user:', userId);
+    // In production, save to database
+  };
+
   if (loading) {
     return (
       <View style={styles.loadingContainer}>
@@ -208,8 +234,26 @@ export default function GameScreen() {
 
         <View style={styles.hudStats}>
           <Text style={styles.hudStat}>Lvl 1</Text>
+          {matches.length > 0 && (
+            <View style={styles.matchBadge}>
+              <Text style={styles.matchBadgeText}>💕 {matches.length}</Text>
+            </View>
+          )}
         </View>
       </View>
+
+      {/* Encounter Button */}
+      <TouchableOpacity style={styles.encounterButton} onPress={handleTriggerEncounter}>
+        <Text style={styles.encounterButtonText}>🎯 Encounter</Text>
+      </TouchableOpacity>
+
+      {/* Encounter Modal */}
+      <EncounterModal
+        visible={encounterVisible}
+        user={currentEncounter}
+        onClose={handleCloseEncounter}
+        onMatch={handleMatch}
+      />
 
       {/* Virtual Joystick */}
       <VirtualJoystick onMove={handleJoystickMove} onStop={handleJoystickStop} />
@@ -305,6 +349,42 @@ const styles = StyleSheet.create({
   },
   hudStat: {
     fontSize: 14,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  matchBadge: {
+    backgroundColor: '#ec4899',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
+    marginTop: 8,
+    borderWidth: 2,
+    borderColor: '#fff',
+  },
+  matchBadgeText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#fff',
+  },
+  encounterButton: {
+    position: 'absolute',
+    bottom: 30,
+    right: 30,
+    backgroundColor: '#8b5cf6',
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: 28,
+    borderWidth: 3,
+    borderColor: '#fff',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 8,
+    zIndex: 1000,
+  },
+  encounterButtonText: {
+    fontSize: 16,
     fontWeight: 'bold',
     color: '#fff',
   },
