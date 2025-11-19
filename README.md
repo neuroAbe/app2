@@ -1,20 +1,25 @@
-# PixelMatch - Pokemon-Style Dating App
+# CatchFeelings - Sims x Pokemon Dating Game
 
-A unique dating application that combines nostalgic Pokemon-style gameplay with modern social connection. Available on **Web** and **Mobile** (iOS & Android).
+A revolutionary dating experience combining **The Sims** (life simulation, relationships) with **Pokemon** (exploration, encounters) gameplay. Available on **Web** and **Mobile** (iOS & Android).
+
+## 🎮 [→ Read Full Product Vision](./PRODUCT_VISION.md)
+
+**"Explore. Encounter. Connect."** - No more endless swiping. Explore a vibrant 2D world, meet real people through random encounters, and build relationships through shared activities.
 
 ## 📱 Project Structure
 
 This is a **monorepo** containing both web and mobile applications sharing a common backend.
 
 ```
-pixelmatch/
+catchfeelings/
 ├── web/                    # Next.js web application
 ├── mobile/                 # Expo React Native mobile app (iOS/Android)
 ├── shared/                 # Shared code between web and mobile
 │   ├── types/             # TypeScript types
 │   └── database/          # Database schema
+├── PRODUCT_VISION.md       # 🎮 Sims x Pokemon game design
+├── DATABASE_SETUP.md       # 🗄️ Supabase setup guide
 ├── MOBILE_MIGRATION_PLAN.md
-├── SUPABASE_SETUP.md
 └── README.md (this file)
 ```
 
@@ -134,15 +139,17 @@ The database schema is in `shared/database/schema.sql` and is used by both web a
 
 ## 📖 Documentation
 
-- **[Web App README](./web/README.md)** - Web-specific setup and features
-- **[Mobile Migration Plan](./MOBILE_MIGRATION_PLAN.md)** - Strategy for mobile app development
-- **[Supabase Setup](./SUPABASE_SETUP.md)** - Database configuration guide
+- **[🎮 Product Vision](./PRODUCT_VISION.md)** - Sims x Pokemon game design & roadmap
+- **[🗄️ Database Setup](./DATABASE_SETUP.md)** - Supabase configuration guide
+- **[🌐 Web App README](./web/README.md)** - Web-specific setup and features
+- **[📱 Mobile App README](./mobile/README.md)** - Mobile-specific setup and features
+- **[🚀 Mobile Migration Plan](./MOBILE_MIGRATION_PLAN.md)** - Mobile development strategy
 
 ---
 
 ## 🔒 Safety & Security
 
-PixelMatch prioritizes user safety:
+CatchFeelings prioritizes user safety:
 
 - **Age Verification**: 18+ enforcement
 - **Identity Verification**: Email & phone required
@@ -185,11 +192,12 @@ MIT
 
 ## 🎯 Why This Project?
 
-1. **Unique Concept** - Pokemon-style dating stands out
+1. **Unique Concept** - Sims x Pokemon hybrid dating game (first of its kind)
 2. **Cross-Platform** - Web + iOS + Android from one codebase
 3. **Safety-First** - Production-ready security features
 4. **Scalable Architecture** - Monorepo with shared backend
-5. **Portfolio Showcase** - Demonstrates full-stack + mobile skills
+5. **Portfolio Showcase** - Demonstrates full-stack + mobile + game dev skills
+6. **Market Innovation** - Solves swipe fatigue with gamified social discovery
 
 ---
 
