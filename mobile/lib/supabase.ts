@@ -8,10 +8,15 @@ export const supabase = createClient(supabaseUrl, supabaseAnonKey, {
     persistSession: true,
     autoRefreshToken: true,
   },
+  db: {
+    schema: 'public',
+  },
   global: {
     headers: {
       'Accept': 'application/json',
+      'Accept-Profile': 'public',
       'Content-Type': 'application/json',
+      'Prefer': 'return=representation',
     },
   },
 });
