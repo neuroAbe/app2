@@ -1,0 +1,2707 @@
+#+TITLE: CatchFeelings - Game Logic Design Document
+#+AUTHOR: Game Design Team
+#+DATE: 2025-11-19
+#+STARTUP: overview
+
+* TABLE OF CONTENTS :TOC:
+- [[#overview][Overview]]
+- [[#core-game-loop][Core Game Loop]]
+- [[#system-1-player-movement-and-world-exploration][System 1: Player Movement and World Exploration]]
+- [[#system-2-encounter-system][System 2: Encounter System]]
+- [[#system-3-conversation-and-matching][System 3: Conversation and Matching]]
+- [[#system-4-relationship-system][System 4: Relationship System]]
+- [[#system-5-activity-and-date-system][System 5: Activity and Date System]]
+- [[#system-6-quest-and-progression-system][System 6: Quest and Progression System]]
+- [[#system-7-mood-and-social-battery][System 7: Mood and Social Battery]]
+- [[#system-8-safety-and-moderation][System 8: Safety and Moderation]]
+- [[#system-9-notification-system][System 9: Notification System]]
+- [[#system-10-profile-and-customization][System 10: Profile and Customization]]
+- [[#data-models][Data Models]]
+- [[#state-machines][State Machines]]
+- [[#edge-cases-and-error-handling][Edge Cases and Error Handling]]
+- [[#performance-considerations][Performance Considerations]]
+- [[#security-considerations][Security Considerations]]
+- [[#analytics-and-telemetry][Analytics and Telemetry]]
+
+* Overview
+
+** Vision
+CatchFeelings combines Pokemon's exploration and encounters with The Sims' relationship building to create a unique dating game experience.
+
+** Core Pillars
+1. *Exploration* - Discover locations and people organically
+2. *Encounters* - Meet real users through proximity-based matching
+3. *Relationships* - Build meaningful connections through activities
+4. *Progression* - Level up and unlock new content
+
+** Technical Stack
+- Mobile: React Native (Expo)
+- Backend: Supabase (PostgreSQL, Realtime, Auth)
+- Authentication: Clerk
+- Game Engine: Custom 2D engine (mobile), Phaser (web)
+
+* Core Game Loop
+
+** Daily Session Flow
+#+BEGIN_SRC
+Session Start
+    ↓
+Check Notifications → View Messages
+    ↓
+Choose Activity:
+    → Explore World (walk around)
+    → Check Quests (daily/weekly)
+    → Manage Relationships (view connections)
+    → Visit Home (customize, rest)
+    ↓
+Exploration Loop:
+    Walk → Encounter → Interact → Match/Skip → Continue
+    ↓
+Plan/Execute Date Activity
+    ↓
+Check Progress (XP, quests, achievements)
+    ↓
+Session End (save state)
+#+END_SRC
+
+** Moment-to-Moment Gameplay
+1. Player opens app
+2. Views map with current location
+3. Decides where to go (coffee shop, park, etc.)
+4. Walks towards destination using joystick
+5. Random encounter triggers (proximity-based)
+6. Mini-profile appears with ice breaker
+7. Conversation or mini-game
+8. Match or continue exploring
+9. Check quest progress
+10. Receive notifications for matches
+11. Plan activities with connections
+
+** Win Conditions
+- Primary: Build meaningful connections (subjective)
+- Secondary: Complete quests, level up, unlock content
+- Tertiary: Collect badges, achievements
+
+* System 1: Player Movement and World Exploration
+
+** 1.1 Movement Mechanics
+
+*** Use Case 1.1.1: Basic Movement
+**** Preconditions
+- Player is logged in
+- World is loaded
+- Player has valid spawn position
+
+**** Trigger
+- Player touches virtual joystick (mobile)
+- Player presses arrow keys/WASD (web)
+
+**** Flow
+1. Input system captures direction vector (x, y)
+2. Normalize vector for diagonal movement
+3. Multiply by speed constant (3 units/frame)
+4. Calculate new position: newPos = currentPos + (vector * speed * deltaTime)
+5. Check collision with world tiles
+6. If no collision: Update player position
+7. If collision: Stop movement in that direction
+8. Update player sprite direction (up/down/left/right)
+9. Update camera to follow player (center on screen)
+10. Save position to database (debounced every 2 seconds)
+
+**** Postconditions
+- Player position updated in local state
+- Camera adjusted to keep player centered
+- Position saved to database (eventually)
+
+**** Edge Cases
+- Player moves off-screen: Camera follows, world scrolls
+- Player moves to world boundary: Collision prevents exit
+- Rapid direction changes: Last valid direction used
+- Network failure during save: Position cached locally, synced when reconnected
+
+*** Use Case 1.1.2: Camera System
+**** Flow
+1. Calculate camera offset: cameraPos = screenCenter - playerPos
+2. Apply transform to world container
+3. Render only visible tiles (viewport culling)
+4. Update HUD elements (stay fixed to screen)
+
+*** Use Case 1.1.3: Collision Detection
+**** Flow
+1. Get player's bounding box (x, y, width, height)
+2. Get new position after movement
+3. Query tiles in that area
+4. Check tile types: walkable vs solid
+5. If solid tile overlaps player bbox: Return collision=true
+6. If all walkable: Return collision=false
+
+**** Tile Types
+- =grass= - Walkable, base terrain
+- =path= - Walkable, roads
+- =water= - Non-walkable, decorative
+- =building= - Non-walkable, interactable
+- =tree= - Non-walkable, obstacle
+- =flower= - Walkable, decorative
+
+** 1.2 World Generation
+
+*** Use Case 1.2.1: Generate Starter Town
+**** Flow
+1. Create grid of tiles (40x40 tiles, 32px each)
+2. Fill with grass as base layer
+3. Add town square in center (10x10 area)
+4. Place buildings around square:
+   - Coffee shop (north)
+   - Restaurant (east)
+   - Gym (south)
+   - Bar (west)
+5. Generate paths between buildings
+6. Add decorative elements (trees, flowers)
+7. Set spawn point (town square center)
+8. Define encounter zones (high traffic areas)
+
+**** Postconditions
+- WorldMap object created
+- All tiles have coordinates and types
+- Buildings have interaction zones
+- Encounter zones marked
+
+*** Use Case 1.2.2: Zone System
+**** Zone Types
+- *Town Square* - High encounter rate, all user types
+- *Coffee District* - Morning crowd, casual vibe
+- *Park Zone* - Afternoon, fitness enthusiasts
+- *Bar District* - Evening/night, social crowd
+- *Residential* - Low encounter rate
+
+**** Zone Properties
+- =encounterId= - Unique identifier
+- =encounterRate= - Probability per second (0.0-1.0)
+- =activeHours= - Time of day modifier
+- =userFilters= - Demographic preferences
+
+** 1.3 Location Interactions
+
+*** Use Case 1.3.1: Enter Building
+**** Trigger
+- Player walks into building tile
+- Proximity < 50px from building entrance
+
+**** Flow
+1. Detect collision with building tile
+2. Show interaction prompt: "Press E to enter [Building Name]"
+3. Player presses action button
+4. Fade to black transition
+5. Load building interior scene
+6. Spawn player at interior entrance
+7. New encounter rules apply (building-specific)
+
+**** Buildings and Activities
+| Building Type | Activities Available | Encounter Type |
+|---------------+----------------------+----------------|
+| Coffee Shop | Order drink, sit, chat | Casual conversation |
+| Restaurant | Dinner date, group meal | Formal date |
+| Gym | Workout, classes | Fitness buddies |
+| Bar | Drinks, games | Evening social |
+| Park | Walk, picnic, sports | Outdoor activities |
+| Cinema | Watch movie | Date activity |
+| Art Gallery | View art, discuss | Cultural date |
+
+*** Use Case 1.3.2: Fast Travel
+**** Preconditions
+- Player has visited location before
+- Location is unlocked
+
+**** Flow
+1. Player opens map
+2. Map shows discovered locations
+3. Player taps/clicks location
+4. Confirm fast travel cost (energy/currency)
+5. Fade transition
+6. Player spawns at destination
+7. Update position in database
+
+* System 2: Encounter System
+
+** 2.1 Proximity-Based Encounters
+
+*** Use Case 2.1.1: Random Encounter Trigger
+**** Preconditions
+- Player is in encounter zone
+- Player has moved > 50 units since last encounter
+- Cooldown period elapsed (30 seconds)
+- Available users in proximity database
+
+**** Trigger
+- Random probability check every second
+- Probability = zoneEncounterRate * timeOfDayMultiplier * userDensity
+
+**** Flow
+1. Game loop checks encounter probability
+2. Roll random number (0-1)
+3. If roll < probability: Trigger encounter
+4. Query database for nearby users:
+   #+BEGIN_SRC sql
+   SELECT * FROM user_profiles
+   WHERE ST_Distance(position, player_position) < 1000
+   AND is_online = true
+   AND clerk_user_id != current_user
+   AND clerk_user_id NOT IN (blocked_users)
+   ORDER BY RANDOM()
+   LIMIT 1
+   #+END_SRC
+5. Load encounter data
+6. Pause player movement
+7. Show encounter animation (screen shake, music)
+8. Display encounter screen
+
+**** Postconditions
+- Game paused
+- Encounter UI visible
+- User profile loaded
+- Encounter logged in database
+
+**** Edge Cases
+- No users available: Show NPC encounter or skip
+- User goes offline mid-encounter: Show "User left" message
+- Network failure: Cache encounter, retry when reconnected
+- User blocks/reports during encounter: End encounter immediately
+
+*** Use Case 2.1.2: Encounter Screen Display
+**** UI Elements
+1. *User Avatar* - Large display, animated
+2. *Basic Info* - Name, age, distance
+3. *Ice Breaker* - Random question or prompt
+4. *Action Buttons*
+   - "Say Hi" (start conversation)
+   - "Play Game" (mini-game challenge)
+   - "Keep Walking" (skip encounter)
+
+**** Flow
+1. Fade in encounter screen
+2. Animate user avatar entrance
+3. Display info with slide-in animation
+4. Show random ice breaker from pool:
+   - "What's your favorite coffee order?"
+   - "Last concert you went to?"
+   - "Guilty pleasure TV show?"
+5. Wait for user action (30 second timeout)
+
+*** Use Case 2.1.3: Ice Breaker System
+**** Ice Breaker Categories
+- Food & Drink
+- Entertainment
+- Hobbies
+- Travel
+- Lifestyle
+- Hypotheticals
+
+**** Selection Algorithm
+1. Check both users' interests
+2. Find common categories
+3. Prioritize questions about shared interests
+4. Fallback to general questions
+5. Never repeat same question to same user pair
+
+** 2.2 Scheduled Encounters
+
+*** Use Case 2.2.1: Date Encounter
+**** Preconditions
+- Two users have matched
+- Date activity scheduled
+- Both users arrive at location within time window
+
+**** Flow
+1. User arrives at date location
+2. Check if match is within 100m
+3. Send notification to match: "[Name] has arrived!"
+4. When both present: Trigger date encounter
+5. Load date activity screen
+6. Different UI than random encounter
+7. Shared activity begins
+
+** 2.3 Event Encounters
+
+*** Use Case 2.3.1: Group Event
+**** Preconditions
+- Event is scheduled (happy hour, art class, etc.)
+- User RSVPed
+- Event time window active
+
+**** Flow
+1. User enters event location
+2. Check event participants list
+3. Show multiple user profiles
+4. Enable group chat
+5. Show event-specific activities
+6. Track event participation for quests
+
+* System 3: Conversation and Matching
+
+** 3.1 Conversation Flow
+
+*** Use Case 3.1.1: Start Conversation
+**** Trigger
+- User taps "Say Hi" in encounter screen
+
+**** Flow
+1. Create conversation session in database:
+   #+BEGIN_SRC sql
+   INSERT INTO conversations (user1_id, user2_id, status, started_at)
+   VALUES (current_user, encountered_user, 'active', NOW())
+   #+END_SRC
+2. Open chat interface
+3. Pre-fill first message with ice breaker response option
+4. Enable message input
+5. Start conversation timer (for metrics)
+
+*** Use Case 3.1.2: Send Message
+**** Flow
+1. User types message in input field
+2. Validate message:
+   - Length: 1-500 characters
+   - Not empty
+   - No prohibited content (check blocklist)
+3. Run AI moderation check (async):
+   - Toxic language detection
+   - Harassment detection
+   - Inappropriate content
+4. If flagged: Warn user, don't send
+5. If clean: Send to database
+   #+BEGIN_SRC sql
+   INSERT INTO messages (conversation_id, sender_id, content, sent_at)
+   VALUES (conv_id, current_user, message_text, NOW())
+   #+END_SRC
+6. Realtime broadcast to recipient
+7. Update conversation updated_at
+8. Increment user's message count (for quests)
+
+*** Use Case 3.1.3: Receive Message
+**** Flow
+1. Supabase Realtime fires event
+2. App receives message payload
+3. If conversation open: Display message immediately
+4. If conversation closed: Show notification
+5. Play sound/haptic feedback
+6. Mark as unread if not in conversation
+7. Update conversation list
+
+*** Use Case 3.1.4: AI Moderation Pipeline
+**** Flow
+1. Message submitted
+2. Quick local check (profanity filter)
+3. Send to moderation API (OpenAI Moderation)
+4. Receive classification:
+   - harassment
+   - hate
+   - sexual
+   - violence
+5. Log result in database
+6. If flagged:
+   - Warning strike for user
+   - Don't deliver message
+   - Show warning to sender
+7. If 3 strikes: Temporary suspension
+
+** 3.2 Matching Logic
+
+*** Use Case 3.2.1: Mutual Interest Check
+**** Trigger
+- After conversation reaches threshold:
+  - 5+ messages exchanged OR
+  - 3+ minutes of conversation OR
+  - User explicitly requests match
+
+**** Flow
+1. Show match prompt: "Want to connect with [Name]?"
+2. User responds: Yes/Not Yet/No
+3. Save response to database:
+   #+BEGIN_SRC sql
+   INSERT INTO match_interests (user_id, target_id, interest_level, timestamp)
+   VALUES (current_user, other_user, 'yes', NOW())
+   #+END_SRC
+4. Check if other user already responded
+5. If mutual "Yes": Trigger match
+6. If one "No": End encounter gracefully
+7. If "Not Yet": Keep conversation open
+
+*** Use Case 3.2.2: Match Confirmation
+**** Flow
+1. Both users said "Yes"
+2. Create match record:
+   #+BEGIN_SRC sql
+   INSERT INTO matches (user1_id, user2_id, matched_at, match_score)
+   VALUES (user1, user2, NOW(), calculate_compatibility())
+   #+END_SRC
+3. Show match animation (hearts, confetti)
+4. Play celebration sound
+5. Grant XP to both users
+6. Update quest progress
+7. Add to connections list
+8. Enable date planning
+9. Send push notification
+
+**** Match Data
+- =matchId= - UUID
+- =user1Id=, =user2Id= - Matched users
+- =matchedAt= - Timestamp
+- =matchScore= - Compatibility (0-100)
+- =status= - active/paused/ended
+- =totalMessages= - Running count
+- =lastInteraction= - Last message/activity
+- =relationshipStage= - acquaintance/friend/dating/partner
+
+** 3.3 Compatibility Scoring
+
+*** Use Case 3.3.1: Calculate Match Score
+**** Factors
+1. *Shared Interests* (30%)
+   - Common hobbies
+   - Similar preferences
+   - Overlapping friend groups
+
+2. *Conversation Quality* (25%)
+   - Response rate
+   - Message length
+   - Time between responses
+   - Emoji/tone analysis
+
+3. *Activity Compatibility* (20%)
+   - Similar activity preferences
+   - Matching energy levels
+   - Compatible schedules
+
+4. *Location* (15%)
+   - Proximity
+   - Shared locations visited
+   - Similar hangout spots
+
+5. *Social Graph* (10%)
+   - Mutual connections
+   - Similar social patterns
+
+**** Algorithm
+#+BEGIN_SRC python
+def calculate_compatibility(user1, user2):
+    score = 0
+
+    # Shared interests
+    common_interests = set(user1.interests) & set(user2.interests)
+    score += (len(common_interests) / max(len(user1.interests), len(user2.interests))) * 30
+
+    # Conversation quality (from ML model)
+    conv_quality = analyze_conversation_sentiment(conversation)
+    score += conv_quality * 25
+
+    # Activity compatibility
+    activity_overlap = calculate_activity_overlap(user1, user2)
+    score += activity_overlap * 20
+
+    # Location proximity
+    distance = calculate_distance(user1.location, user2.location)
+    location_score = max(0, 15 - (distance / 100))
+    score += location_score
+
+    # Social graph
+    mutual_friends = count_mutual_connections(user1, user2)
+    score += min(mutual_friends * 2, 10)
+
+    return min(100, score)
+#+END_SRC
+
+* System 4: Relationship System
+
+** 4.1 Relationship Stages
+
+*** Stage Progression
+| Stage | Requirements | Features Unlocked |
+|-------+-------------+-------------------|
+| Encountered | Met once | Basic chat |
+| Acquaintance | 3 conversations | See activity status |
+| Friend | 5 activities together | Home visits |
+| Close Friend | 20+ interactions | Private event invites |
+| Crush | Mutual romantic interest | Date activities |
+| Dating | 5+ dates | Couple quests |
+| Partner | Commitment milestone | Shared progress |
+
+*** Use Case 4.1.1: Stage Transition
+**** Trigger
+- Relationship points reach threshold
+- Specific milestone achieved
+- Mutual agreement (for romantic stages)
+
+**** Flow
+1. Check relationship points
+2. If threshold met: Trigger stage-up event
+3. Show notification: "Your relationship with [Name] has grown!"
+4. Display new stage badge
+5. Unlock stage-specific features
+6. Grant XP reward
+7. Update relationship in database
+
+** 4.2 Relationship Meters
+
+*** Use Case 4.2.1: Track Relationship Metrics
+**** Metrics
+1. *Friendship* (0-100)
+   - Increases: Regular conversations, shared activities
+   - Decreases: Long periods without contact, negative interactions
+
+2. *Romance* (0-100)
+   - Increases: Date activities, compliments, gifts
+   - Decreases: Missed dates, one-sided effort
+
+3. *Compatibility* (0-100)
+   - Calculated from shared activities
+   - How well you mesh in activities
+   - Updated after each interaction
+
+4. *Trust* (0-100)
+   - Increases: Consistent behavior, honesty, vulnerability
+   - Decreases: Flakiness, dishonesty detected
+
+**** Update Formula
+#+BEGIN_SRC python
+def update_relationship_meter(relationship, action):
+    # Base change from action
+    base_change = ACTION_VALUES[action.type]
+
+    # Time decay (relationships decay without interaction)
+    days_since_interaction = (now - relationship.last_interaction).days
+    decay = -0.5 * days_since_interaction
+
+    # Apply change with diminishing returns
+    if relationship.friendship > 80:
+        base_change *= 0.5  # Harder to improve at high levels
+
+    # Update meter
+    relationship.friendship += base_change + decay
+    relationship.friendship = clamp(relationship.friendship, 0, 100)
+
+    # Check for stage transition
+    check_stage_transition(relationship)
+#+END_SRC
+
+** 4.3 Relationship Memory
+
+*** Use Case 4.3.1: Track Shared Experiences
+**** Data Stored
+- All conversations (summary + key topics)
+- Activities completed together
+- Gifts given/received
+- Milestones reached
+- Inside jokes/references
+- Important dates (first date, anniversaries)
+
+**** Flow
+1. After each interaction, create memory entry:
+   #+BEGIN_SRC sql
+   INSERT INTO relationship_memories (
+     relationship_id,
+     memory_type,
+     content,
+     location,
+     timestamp,
+     sentiment_score
+   )
+   VALUES (rel_id, 'activity', 'Went to coffee shop together', location, NOW(), 0.85)
+   #+END_SRC
+2. Use AI to extract key topics from conversations
+3. Store embeddings for semantic search
+4. Surface memories in future conversations
+
+*** Use Case 4.3.2: Reference Past Experiences
+**** Flow
+1. User starts conversation with match
+2. Query recent memories:
+   #+BEGIN_SRC sql
+   SELECT * FROM relationship_memories
+   WHERE relationship_id = rel_id
+   ORDER BY timestamp DESC
+   LIMIT 5
+   #+END_SRC
+3. Show conversation starters: "Ask about [past topic]"
+4. If user mentions past event, AI recognizes and acknowledges
+
+** 4.4 Relationship Actions
+
+*** Use Case 4.4.1: Send Gift
+**** Preconditions
+- Relationship stage >= Friend
+- User has gift item in inventory
+- Within daily gift limit
+
+**** Flow
+1. User selects match from connections
+2. Tap "Send Gift" option
+3. Choose gift from inventory
+4. Add optional message
+5. Send gift:
+   #+BEGIN_SRC sql
+   INSERT INTO gifts (sender_id, recipient_id, item_id, message, sent_at)
+   VALUES (current_user, match_id, gift_item_id, message, NOW())
+   #+END_SRC
+6. Deduct item from inventory
+7. Update relationship meter (+5 romance)
+8. Notify recipient
+9. Track for quests
+
+*** Use Case 4.4.2: Plan Activity Together
+**** Flow
+1. User selects match
+2. Choose "Plan Activity"
+3. Browse available activities:
+   - Filter by interest compatibility
+   - Show recommended activities
+   - Display cost (energy/currency)
+4. Select activity + time
+5. Send invitation
+6. If accepted: Create scheduled activity
+7. Both users get reminder notification
+
+*** Use Case 4.4.3: End Relationship
+**** Flow
+1. User selects match
+2. Choose "Pause/End Connection"
+3. Select reason (optional)
+4. Confirm decision
+5. Update relationship status
+6. Remove from active connections
+7. Move to "Past Connections" list
+8. Optionally block user
+
+* System 5: Activity and Date System
+
+** 5.1 Activity Types
+
+*** Categories
+1. *Casual* - Low commitment, 15-30 min
+   - Coffee chat
+   - Park walk
+   - Quick game
+
+2. *Date* - Medium commitment, 30-60 min
+   - Dinner
+   - Movie
+   - Mini golf
+   - Art gallery
+
+3. *Adventure* - High commitment, 60+ min
+   - Hiking
+   - Amusement park
+   - Day trip
+   - Concert
+
+4. *Group* - Multiple users
+   - House party
+   - Game night
+   - Trivia
+   - Sports
+
+*** Activity Properties
+- =activityId= - Unique identifier
+- =name= - Display name
+- =category= - Type from above
+- =duration= - Minutes
+- =energyCost= - Resource spent
+- =location= - Where it takes place
+- =minParticipants= / =maxParticipants= - Group size
+- =relationshipStageRequired= - Minimum relationship level
+- =availableHours= - Time of day restrictions
+- =weatherDependent= - Outdoor activities
+
+** 5.2 Activity Scheduling
+
+*** Use Case 5.2.1: Create Activity Invitation
+**** Flow
+1. User selects activity type
+2. Choose participants (matches)
+3. Select date and time
+4. Add optional note
+5. Create invitation:
+   #+BEGIN_SRC sql
+   INSERT INTO activity_invitations (
+     creator_id,
+     activity_type,
+     scheduled_time,
+     location,
+     participants,
+     status
+   )
+   VALUES (current_user, 'coffee', '2025-11-20 14:00', 'downtown_cafe', [user2], 'pending')
+   #+END_SRC
+6. Send notifications to invitees
+7. Add to user's calendar
+
+*** Use Case 5.2.2: Respond to Invitation
+**** Flow
+1. User receives notification
+2. View invitation details
+3. Choose response:
+   - Accept
+   - Decline
+   - Suggest alternative time
+4. Update invitation record
+5. Notify creator of response
+6. If all accepted: Confirm activity
+7. Add to both calendars
+
+*** Use Case 5.2.3: Activity Reminder
+**** Flow
+1. Background job checks scheduled activities
+2. Find activities within next 30 minutes
+3. For each participant:
+   - Send push notification
+   - Show in-app alert
+   - Update calendar highlight
+4. Track notification delivery
+
+** 5.3 Activity Execution
+
+*** Use Case 5.3.1: Start Scheduled Activity
+**** Preconditions
+- Activity scheduled
+- Within time window (±15 minutes)
+- Participants in proximity (within 500m)
+
+**** Flow
+1. User arrives at activity location
+2. Check-in prompt appears: "Ready to start [Activity]?"
+3. User confirms check-in
+4. Wait for other participants
+5. Show waiting screen with:
+   - "Waiting for [Name]..."
+   - ETA based on their location
+   - Option to send reminder
+6. When all checked in: Start activity
+
+*** Use Case 5.3.2: Activity Gameplay - Coffee Date
+**** Flow
+1. Load coffee shop scene
+2. Seat avatars at table
+3. Present conversation prompts:
+   - Would You Rather questions
+   - Two Truths and a Lie
+   - Story sharing
+4. Users take turns responding
+5. Track engagement metrics:
+   - Response time
+   - Message positivity
+   - Shared laughs (emoji reactions)
+6. After 15 minutes: Show activity summary
+7. Update relationship meters
+8. Grant XP and rewards
+
+*** Use Case 5.3.3: Activity Gameplay - Mini Golf
+**** Flow
+1. Load mini golf course
+2. Each player takes turn
+3. Simple physics-based putting
+4. Keep score
+5. Friendly competition
+6. Chat between holes
+7. Winner gets bonus XP
+8. Update relationship (competition builds camaraderie)
+
+*** Use Case 5.3.4: Activity Completion
+**** Flow
+1. Activity time expires or players finish
+2. Show completion screen
+3. Display stats:
+   - Time spent: 27 minutes
+   - Messages exchanged: 14
+   - Moments shared: 3
+4. Relationship change preview:
+   - Friendship: +8
+   - Romance: +5
+   - Compatibility: +3
+5. Show photo/memory from activity
+6. Option to save to memory album
+7. Grant rewards:
+   - XP: +50
+   - Currency: +25
+   - Quest progress
+8. Update activity history
+9. Save memory to database
+
+** 5.4 Activity Cancellation
+
+*** Use Case 5.4.1: Cancel Activity
+**** Flow
+1. User views scheduled activity
+2. Select "Cancel"
+3. Confirm cancellation
+4. Notify other participants
+5. Remove from calendars
+6. Penalize relationship meter (-5) if within 2 hours
+7. Log cancellation count (too many = warning)
+
+*** Use Case 5.4.2: No-Show Handling
+**** Flow
+1. Activity start time passes
+2. One participant didn't check in
+3. Wait 15 minutes grace period
+4. If still no-show:
+   - Notify present participant
+   - Option to continue solo or cancel
+   - Penalize no-show user:
+     - Relationship meter: -10
+     - Reputation score decrease
+     - Quest progress not counted
+   - Log incident
+5. After 3 no-shows: Temporary suspension from scheduling
+
+* System 6: Quest and Progression System
+
+** 6.1 Quest Types
+
+*** Daily Quests (Reset at midnight)
+- "Morning Coffee" - Visit coffee shop (10 XP)
+- "Social Butterfly" - Have 3 conversations (20 XP)
+- "Explorer" - Visit 2 different locations (15 XP)
+- "Active" - Walk 1000 steps in game (15 XP)
+- "Matchmaker" - Match with someone new (30 XP)
+
+*** Weekly Quests (Reset Monday)
+- "Date Night" - Go on 2 activities (50 XP)
+- "Friendship Goals" - Reach Friend status with someone (75 XP)
+- "World Traveler" - Visit all 5 zones (100 XP)
+- "Life of the Party" - Attend a group event (60 XP)
+- "Conversation Master" - Send 50 messages (40 XP)
+
+*** Milestone Quests (One-time)
+- "First Steps" - Complete tutorial (100 XP)
+- "First Connection" - Match with first person (150 XP)
+- "Social Circle" - Have 5 active matches (200 XP)
+- "Dedicated" - Log in 7 days in a row (300 XP)
+- "Relationship Expert" - Reach Dating stage (500 XP)
+
+*** Seasonal Events (Limited time)
+- Halloween: "Spooky Encounters" - Meet people in haunted zone
+- Valentine's: "Love is in the Air" - Go on romantic dates
+- Summer: "Beach Day" - Activities at beach location
+
+** 6.2 Quest Management
+
+*** Use Case 6.2.1: Quest Assignment
+**** Flow
+1. Daily reset trigger (midnight)
+2. Generate daily quests for user:
+   #+BEGIN_SRC python
+   def generate_daily_quests(user):
+       quest_pool = DAILY_QUEST_TEMPLATES
+
+       # Personalize based on user behavior
+       if user.favorite_activity == 'coffee':
+           prioritize_coffee_quests()
+
+       # Ensure variety (don't repeat yesterday's quests)
+       available = filter_out_recent(quest_pool, user.recent_quests)
+
+       # Select 3-5 quests
+       selected = random.sample(available, k=3)
+
+       # Create quest instances
+       for quest_template in selected:
+           create_quest_instance(user, quest_template)
+   #+END_SRC
+3. Save to database
+4. Send notification: "New daily quests available!"
+
+*** Use Case 6.2.2: Track Quest Progress
+**** Flow
+1. User performs action (sends message, visits location, etc.)
+2. Action event fired
+3. Quest system receives event
+4. Query active quests:
+   #+BEGIN_SRC sql
+   SELECT * FROM user_quests
+   WHERE user_id = current_user
+   AND status = 'active'
+   AND quest_template_id IN (SELECT id FROM quest_templates WHERE tracks_event = 'message_sent')
+   #+END_SRC
+5. For each matching quest:
+   - Increment progress counter
+   - Check if completed
+   - If complete: Trigger completion flow
+6. Update progress in database
+7. If progress visible: Update UI badge
+
+*** Use Case 6.2.3: Complete Quest
+**** Flow
+1. Quest progress reaches 100%
+2. Change status to 'completed'
+3. Show completion notification
+4. Grant rewards:
+   - XP
+   - Currency (optional)
+   - Items (optional)
+   - Badge (milestone quests)
+5. Trigger completion animation
+6. Update quest log
+7. Check if all daily quests complete (bonus reward)
+
+** 6.3 Leveling System
+
+*** Use Case 6.3.1: Gain Experience
+**** XP Sources
+| Action | XP Earned |
+|--------+-----------|
+| Send message | 1 |
+| Match with someone | 30 |
+| Complete activity | 50 |
+| Complete daily quest | 10-30 |
+| Complete weekly quest | 40-100 |
+| Relationship stage up | 100 |
+| Attend event | 75 |
+
+**** Flow
+1. User performs XP-earning action
+2. Calculate XP amount
+3. Add to user's total XP:
+   #+BEGIN_SRC sql
+   UPDATE user_profiles
+   SET xp = xp + earned_xp
+   WHERE clerk_user_id = current_user
+   RETURNING xp, level
+   #+END_SRC
+4. Check if level threshold reached
+5. If leveled up: Trigger level up flow
+
+*** Use Case 6.3.2: Level Up
+**** Level Formula
+#+BEGIN_SRC python
+def xp_required_for_level(level):
+    # Exponential growth with some tuning
+    base = 100
+    return int(base * (level ** 1.5))
+
+# Level 1: 100 XP
+# Level 2: 282 XP
+# Level 3: 519 XP
+# Level 4: 800 XP
+# ...
+# Level 10: 3162 XP
+#+END_SRC
+
+**** Flow
+1. User's XP >= XP required for next level
+2. Increment level:
+   #+BEGIN_SRC sql
+   UPDATE user_profiles
+   SET level = level + 1
+   WHERE clerk_user_id = current_user
+   #+END_SRC
+3. Show level up animation (full screen)
+4. Display new level badge
+5. Grant level up rewards:
+   - Currency
+   - Unlock new locations (level gates)
+   - Unlock new activities
+   - Unlock cosmetics
+6. Save to activity log
+7. Post to social feed (optional)
+8. Send notification to friends
+
+*** Use Case 6.3.3: Level Unlocks
+| Level | Unlocks |
+|-------+---------|
+| 1 | Starter Town, Basic activities |
+| 5 | Coffee District, Group chat |
+| 10 | Park Zone, Date activities |
+| 15 | Art Quarter, Relationship gifts |
+| 20 | Bar District, Group events |
+| 25 | Beach Area, Advanced customization |
+| 30 | Downtown, Private events |
+| 40 | VIP locations, Mentorship |
+| 50 | All features, Host events |
+
+** 6.4 Achievements and Badges
+
+*** Achievement Categories
+1. *Social* - Matches, friends, conversations
+2. *Explorer* - Locations visited, distance walked
+3. *Activities* - Types and count of activities
+4. *Relationships* - Depth and quality
+5. *Community* - Events hosted, helping others
+6. *Dedication* - Login streaks, time played
+
+*** Use Case 6.4.1: Unlock Achievement
+**** Flow
+1. User meets achievement criteria
+2. Check if already unlocked
+3. If new:
+   #+BEGIN_SRC sql
+   INSERT INTO user_achievements (user_id, achievement_id, unlocked_at)
+   VALUES (current_user, achievement_id, NOW())
+   #+END_SRC
+4. Show unlock notification
+5. Display badge animation
+6. Grant rewards (XP, title, cosmetic)
+7. Add to profile display
+8. Update achievement progress UI
+
+*** Achievement Examples
+- "First Date" - Complete first activity
+- "Social Butterfly" - 10 active matches
+- "Marathon" - Walk 10km in game
+- "Night Owl" - Active at 2am
+- "Early Bird" - Active at 6am
+- "Party Host" - Host 5 events
+- "Wingman" - Introduce 2 friends who match
+- "Fashionista" - Collect 20 outfit items
+- "Homebody" - Fully decorate home
+- "Heartbreaker" - Have 100 total matches (jokingly)
+
+* System 7: Mood and Social Battery
+
+** 7.1 Mood System
+
+*** Mood Factors
+1. *Happiness* (0-100)
+   - Increases: Positive interactions, activities, progression
+   - Decreases: Negative interactions, rejection, inactivity
+
+2. *Energy* (0-100)
+   - Decreases: Activities, long sessions
+   - Increases: Rest at home, time passing
+
+3. *Social Battery* (0-100)
+   - Decreases: Encounters, conversations
+   - Increases: Solo activities, breaks
+
+*** Use Case 7.1.1: Update Mood
+**** Flow
+1. User performs action
+2. Calculate mood impact:
+   #+BEGIN_SRC python
+   def calculate_mood_change(action, current_mood):
+       changes = {
+           'happiness': 0,
+           'energy': 0,
+           'social_battery': 0
+       }
+
+       if action.type == 'positive_interaction':
+           changes['happiness'] = +5
+           changes['social_battery'] = -10
+       elif action.type == 'activity':
+           changes['happiness'] = +3
+           changes['energy'] = -activity.energy_cost
+       elif action.type == 'rest':
+           changes['energy'] = +20
+           changes['social_battery'] = +15
+
+       return changes
+   #+END_SRC
+3. Apply changes to mood meters
+4. Clamp values (0-100)
+5. Update UI mood indicators
+6. Check for mood effects
+
+*** Use Case 7.1.2: Mood Effects on Gameplay
+**** Low Energy (<20)
+- Movement speed reduced by 50%
+- Can't start new activities
+- "You're feeling tired. Rest at home?"
+- Encounter rate decreased
+
+**** Low Social Battery (<20)
+- Conversations feel draining
+- "Take a break?" suggestion
+- Solo activities recommended
+- Chance to auto-decline encounters
+
+**** Low Happiness (<30)
+- Mood affects conversation tone
+- Visible to matches (emoji indicator)
+- Self-care activities recommended
+- Quest: "Cheer yourself up"
+
+** 7.2 Rest and Recovery
+
+*** Use Case 7.2.1: Rest at Home
+**** Flow
+1. User returns home
+2. Select "Rest" action
+3. Choose rest type:
+   - Quick nap (5 min) - +20 energy
+   - Full rest (15 min) - +50 energy, +30 social battery
+   - Night sleep (log off) - Full restore on next login
+4. Show rest animation (fade to dark)
+5. Time passes
+6. Restore energy/social battery
+7. Bonus happiness if home is decorated
+
+*** Use Case 7.2.2: Self-Care Activities
+**** Activities
+- Read a book (+happiness, solo)
+- Watch show (+happiness, -energy)
+- Exercise at home (+happiness, +energy long-term)
+- Decorate home (+happiness, creative outlet)
+- Listen to music (+social battery, +happiness)
+
+**** Flow
+1. User selects self-care activity
+2. Mini-scene plays out
+3. Timer counts down (3-10 minutes)
+4. User can skip or let play
+5. Restore mood meters
+6. Track for quests
+7. Unlock related achievements
+
+** 7.3 Mood-Based Recommendations
+
+*** Use Case 7.3.1: Suggest Activities Based on Mood
+**** Flow
+1. Check user's current mood state
+2. AI recommendation engine:
+   #+BEGIN_SRC python
+   def recommend_activities(mood):
+       if mood.energy < 30:
+           return low_energy_activities  # Coffee, sitting activities
+
+       if mood.social_battery < 30:
+           return solo_or_small_group  # 1-on-1 dates, not group events
+
+       if mood.happiness < 40:
+           return mood_boosting_activities  # Fun, light activities
+
+       # Default: Match interests and availability
+       return match_based_recommendations(mood.user)
+   #+END_SRC
+3. Display recommendations prominently
+4. Explain reasoning: "Since you're low energy, here are relaxing activities"
+
+* System 8: Safety and Moderation
+
+** 8.1 User Verification
+
+*** Use Case 8.1.1: Account Creation Safety
+**** Flow
+1. User signs up with Clerk
+2. Email verification required
+3. Phone verification (optional, encouraged)
+4. Age verification:
+   - Birth date input
+   - Must be 18+
+   - Cross-reference with ID (for photo verification)
+5. Profile review:
+   - AI scans photos for inappropriate content
+   - AI checks bio for red flags
+6. Account approved or flagged for review
+
+*** Use Case 8.1.2: Photo Verification
+**** Flow
+1. User requests verified badge
+2. Prompt to take selfie
+3. Selfie must match profile photos
+4. Face comparison using AI
+5. Liveness detection (blink, turn head)
+6. If match: Grant verified badge
+7. If mismatch: Request manual review
+8. Verified badge displayed on profile
+
+** 8.2 Reporting and Blocking
+
+*** Use Case 8.2.1: Report User
+**** Trigger
+- User taps "Report" on profile or in conversation
+
+**** Flow
+1. Show report form
+2. Select reason:
+   - Harassment
+   - Inappropriate content
+   - Spam
+   - Fake profile
+   - Underage
+   - Other (free text)
+3. Optional: Upload screenshots
+4. Submit report:
+   #+BEGIN_SRC sql
+   INSERT INTO reports (reporter_id, reported_id, reason, details, evidence, status)
+   VALUES (current_user, reported_user, reason, details, screenshots, 'pending')
+   #+END_SRC
+5. Auto-block reported user temporarily
+6. Queue for moderation review
+7. Confirm submission to reporter
+8. Log incident
+
+**** Moderation Queue
+1. Moderator reviews report
+2. Checks reported user's history
+3. Reviews evidence
+4. Decision:
+   - No action (false report)
+   - Warning
+   - Temporary suspension (1 day, 7 days)
+   - Permanent ban
+5. Notify reported user of outcome
+6. If banned: Disable account, remove from game
+
+*** Use Case 8.2.2: Block User
+**** Flow
+1. User selects "Block" on profile
+2. Confirm action
+3. Add to block list:
+   #+BEGIN_SRC sql
+   INSERT INTO user_blocks (blocker_id, blocked_id, blocked_at)
+   VALUES (current_user, blocked_user, NOW())
+   #+END_SRC
+4. Remove blocked user from:
+   - Connections list
+   - Encounter pool
+   - Conversation list
+   - Event participants
+5. No notification to blocked user
+6. Blocked user can't see blocker in game world
+7. Update UI: Remove from all lists
+
+** 8.3 Content Moderation
+
+*** Use Case 8.3.1: Message Moderation
+**** Flow (from Section 3.1.4)
+1. Real-time moderation on send
+2. AI classification
+3. Flagged messages blocked
+4. Strikes accumulate
+5. Auto-suspension after threshold
+
+*** Use Case 8.3.2: Profile Content Moderation
+**** Flow
+1. User updates profile (photo, bio)
+2. Trigger moderation check
+3. AI scans for:
+   - Nudity
+   - Violence
+   - Hate symbols
+   - Text: profanity, slurs, contact info
+4. If flagged:
+   - Reject update
+   - Show warning
+   - Log violation
+5. If clean: Approve update
+6. Periodic re-checks of existing profiles
+
+** 8.4 Safety Features
+
+*** Use Case 8.4.1: Safe Meeting Suggestions
+**** Flow
+1. Users plan first in-person meetup
+2. System suggests public locations:
+   - Coffee shops
+   - Restaurants
+   - Public parks
+3. Show safety tips:
+   - "Meet in public place"
+   - "Tell a friend where you're going"
+   - "Stay sober"
+   - "Trust your instincts"
+4. Optional: Share meeting details with trusted contact
+
+*** Use Case 8.4.2: Check-In System
+**** Flow
+1. User going on date sets up check-in
+2. Choose trusted friend from contacts
+3. Set check-in time (e.g., 2 hours from now)
+4. System sends reminder at check-in time
+5. User confirms they're safe
+6. If no response: Alert trusted contact
+7. Trusted contact can see last known location
+
+*** Use Case 8.4.3: Privacy Modes
+**** Anonymous Exploration
+- User's real name hidden
+- Avatar displayed instead of photo
+- Can explore and see others
+- Must reveal identity to match
+
+**** Location Privacy
+- Show approximate area, not exact location
+- "Nearby" instead of distance
+- Don't show real-time location until matched
+
+**** Visibility Settings
+- "Everyone" - Show in all encounters
+- "Friends of friends" - Limited to social graph
+- "Current matches only" - Invisible to new people
+- "Invisible" - Explore without being seen
+
+* System 9: Notification System
+
+** 9.1 Notification Types
+
+*** Priority Levels
+1. *Critical* - Immediate delivery, sound + vibration
+   - Match confirmed
+   - Date reminder (15 min before)
+   - Safety check-in
+
+2. *High* - Prompt delivery, sound
+   - New message from match
+   - Activity invitation
+   - Someone nearby (if opted in)
+
+3. *Medium* - Standard delivery
+   - Quest completed
+   - Level up
+   - New daily quests
+
+4. *Low* - Batched, silent
+   - Profile views
+   - Activity suggestions
+   - Events happening
+
+** 9.2 Notification Delivery
+
+*** Use Case 9.2.1: Send Push Notification
+**** Flow
+1. Event triggers notification (e.g., new match)
+2. Check user's notification preferences
+3. If enabled for this type:
+   #+BEGIN_SRC sql
+   INSERT INTO notifications (user_id, type, title, body, data, priority)
+   VALUES (user_id, 'match', 'New Match!', 'You matched with Sarah', {matchId: 123}, 'critical')
+   #+END_SRC
+4. Deliver via platform:
+   - iOS: APNs
+   - Android: FCM
+   - Web: Web Push API
+5. Track delivery status
+6. If failed: Retry with exponential backoff
+7. If app open: Show in-app instead
+
+*** Use Case 9.2.2: In-App Notifications
+**** Flow
+1. User opens app
+2. Query unread notifications:
+   #+BEGIN_SRC sql
+   SELECT * FROM notifications
+   WHERE user_id = current_user
+   AND read_at IS NULL
+   ORDER BY created_at DESC
+   LIMIT 20
+   #+END_SRC
+3. Display notification center icon with badge count
+4. User taps notification center
+5. Show list of notifications
+6. User taps notification:
+   - Mark as read
+   - Navigate to relevant screen
+   - Execute notification action
+
+** 9.3 Notification Preferences
+
+*** Use Case 9.3.1: Manage Preferences
+**** Settings
+#+BEGIN_SRC
+Notification Preferences
+├── Push Notifications [ON/OFF]
+├── Matches
+│   ├── New match [ON]
+│   └── Match messages [ON]
+├── Activities
+│   ├── Invitations [ON]
+│   ├── Reminders [ON]
+│   └── Activity starting [ON]
+├── Social
+│   ├── New followers [OFF]
+│   ├── Event invites [ON]
+│   └── Friend requests [ON]
+├── Game
+│   ├── Quest completed [OFF]
+│   ├── Level up [ON]
+│   └── Daily quests ready [ON]
+├── Quiet Hours
+│   ├── Enabled [ON]
+│   ├── Start time [22:00]
+│   └── End time [08:00]
+└── Nearby Alerts [OFF]
+#+END_SRC
+
+**** Flow
+1. User opens notification settings
+2. Toggle preferences
+3. Save to database:
+   #+BEGIN_SRC sql
+   UPDATE user_notification_preferences
+   SET preferences = jsonb_set(preferences, '{matches}', 'true')
+   WHERE user_id = current_user
+   #+END_SRC
+4. Update local cache
+5. Respect preferences in notification pipeline
+
+** 9.4 Notification Batching
+
+*** Use Case 9.4.1: Batch Low-Priority Notifications
+**** Flow
+1. Low-priority event occurs
+2. Instead of sending immediately, add to batch queue
+3. Background job runs every hour:
+   #+BEGIN_SRC python
+   def send_batched_notifications():
+       for user in users_with_queued_notifications():
+           notifications = get_queued_notifications(user, last_hour)
+
+           if len(notifications) == 0:
+               continue
+
+           summary = create_summary(notifications)
+           # "You have 5 new profile views and 2 event suggestions"
+
+           send_push_notification(user, summary)
+           mark_as_sent(notifications)
+   #+END_SRC
+4. Send single summary notification
+5. User taps to see details
+
+* System 10: Profile and Customization
+
+** 10.1 Profile Management
+
+*** Use Case 10.1.1: Create Profile
+**** Flow (from Onboarding)
+1. User completes signup
+2. Profile setup wizard:
+   - Display name
+   - Date of birth (18+ verification)
+   - Gender identity (inclusive options + custom)
+   - Pronouns
+   - Photos (1-6, at least 1 required)
+   - Bio (150 characters)
+   - Interests (select 3-10)
+3. Validate inputs
+4. Create profile:
+   #+BEGIN_SRC sql
+   INSERT INTO user_profiles (
+     clerk_user_id,
+     display_name,
+     date_of_birth,
+     gender,
+     pronouns,
+     bio,
+     interests,
+     avatar_color,
+     current_town
+   ) VALUES (...)
+   #+END_SRC
+5. Set default avatar color (random)
+6. Set spawn location (starter town center)
+7. Create starter inventory
+8. Grant starting currency
+9. Complete onboarding
+
+*** Use Case 10.1.2: Edit Profile
+**** Flow
+1. User navigates to profile
+2. Tap "Edit Profile"
+3. Modify fields
+4. For photos:
+   - Upload new photo
+   - AI content moderation check
+   - Resize and optimize
+   - Store in CDN
+5. Save changes
+6. If significant changes (name, gender): Log in audit trail
+7. Update last_updated timestamp
+8. Notify matches if display name changed
+
+** 10.2 Avatar Customization
+
+*** Customization Options
+1. *Body*
+   - Skin tone (8 options)
+   - Body type (3 options)
+
+2. *Face*
+   - Face shape (5 options)
+   - Eyes (10 options)
+   - Eyebrows (8 options)
+   - Nose (6 options)
+   - Mouth (8 options)
+   - Facial hair (10 options, optional)
+
+3. *Hair*
+   - Style (20+ options)
+   - Color (12 colors + custom)
+   - Length (short, medium, long)
+
+4. *Outfit*
+   - Top (15+ options)
+   - Bottom (15+ options)
+   - Shoes (10+ options)
+   - Accessories (hats, glasses, jewelry)
+
+5. *Unlockables*
+   - Premium items (purchase)
+   - Seasonal items (events)
+   - Achievement items (unlock via milestones)
+
+*** Use Case 10.2.1: Customize Avatar
+**** Flow
+1. User opens avatar editor
+2. Select category (face, hair, outfit, etc.)
+3. Browse available options
+4. Preview in real-time
+5. Options marked if locked:
+   - "Level 10 required"
+   - "Premium item - $0.99"
+   - "Unlock at Beach Zone"
+6. Apply changes
+7. Save avatar configuration:
+   #+BEGIN_SRC sql
+   UPDATE user_profiles
+   SET avatar_config = jsonb_set(avatar_config, '{hair}', '{"style": "wavy", "color": "#8B4513"}')
+   WHERE clerk_user_id = current_user
+   #+END_SRC
+8. Update avatar sprite in game
+9. Update profile photo with new avatar render
+
+** 10.3 Home Customization
+
+*** Use Case 10.3.1: Decorate Home
+**** Flow
+1. User enters their home
+2. Tap "Edit Mode"
+3. Switch to edit view
+4. Furniture/decoration options:
+   - Furniture (couch, bed, table, etc.)
+   - Decorations (plants, art, rugs)
+   - Lighting (lamps, colors)
+   - Collectibles (trophies, photos)
+5. Drag items to place
+6. Resize and rotate
+7. Remove items (returns to inventory)
+8. Save layout
+9. Exit edit mode
+10. Visitors can see decorated home
+
+**** Home Benefits
+- Mood boost when resting in decorated home
+- Conversation starter (matches comment on style)
+- Achievement: "Interior Designer"
+- Can host dates at home
+
+** 10.4 Interest Management
+
+*** Use Case 10.4.1: Update Interests
+**** Interest Categories
+- Sports (basketball, hiking, yoga, etc.)
+- Arts (painting, music, theater, etc.)
+- Food (cooking, wine, coffee, etc.)
+- Entertainment (movies, gaming, reading, etc.)
+- Lifestyle (travel, fashion, pets, etc.)
+
+**** Flow
+1. User opens profile editor
+2. Navigate to "Interests"
+3. View current interests (3-10 selected)
+4. Search or browse interest library
+5. Add new interest
+6. Remove interest
+7. Min 3, max 10 enforced
+8. Save changes
+9. Recalculate compatibility scores with existing matches
+10. Update encounter algorithm weighting
+
+* Data Models
+
+** User Profile
+#+BEGIN_SRC sql
+CREATE TABLE user_profiles (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  clerk_user_id TEXT UNIQUE NOT NULL,
+  email TEXT UNIQUE NOT NULL,
+  display_name TEXT NOT NULL,
+  date_of_birth DATE NOT NULL,
+  age INTEGER GENERATED ALWAYS AS (EXTRACT(YEAR FROM AGE(date_of_birth))),
+  gender TEXT,
+  pronouns TEXT,
+  bio TEXT,
+  interests TEXT[],
+  photos TEXT[],  -- Array of CDN URLs
+
+  -- Game State
+  position_x INTEGER DEFAULT 400,
+  position_y INTEGER DEFAULT 300,
+  current_town TEXT DEFAULT 'starter_town',
+  level INTEGER DEFAULT 1,
+  xp INTEGER DEFAULT 0,
+  currency INTEGER DEFAULT 0,
+
+  -- Avatar
+  avatar_config JSONB DEFAULT '{}',
+  avatar_color TEXT DEFAULT '#6366f1',
+
+  -- Mood
+  happiness INTEGER DEFAULT 75,
+  energy INTEGER DEFAULT 100,
+  social_battery INTEGER DEFAULT 100,
+
+  -- Settings
+  visibility TEXT DEFAULT 'everyone',
+  notification_prefs JSONB DEFAULT '{}',
+
+  -- Metadata
+  is_verified BOOLEAN DEFAULT false,
+  is_online BOOLEAN DEFAULT false,
+  last_active TIMESTAMP,
+  created_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW()
+);
+
+CREATE INDEX idx_user_location ON user_profiles USING GIST (
+  ST_Point(position_x, position_y)
+);
+CREATE INDEX idx_user_online ON user_profiles(is_online) WHERE is_online = true;
+#+END_SRC
+
+** Match
+#+BEGIN_SRC sql
+CREATE TABLE matches (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user1_id TEXT REFERENCES user_profiles(clerk_user_id),
+  user2_id TEXT REFERENCES user_profiles(clerk_user_id),
+  matched_at TIMESTAMP DEFAULT NOW(),
+
+  -- Relationship Metrics
+  relationship_stage TEXT DEFAULT 'acquaintance',
+  friendship_meter INTEGER DEFAULT 50,
+  romance_meter INTEGER DEFAULT 0,
+  compatibility_score INTEGER,
+  trust_meter INTEGER DEFAULT 50,
+
+  -- Stats
+  total_messages INTEGER DEFAULT 0,
+  total_activities INTEGER DEFAULT 0,
+  last_interaction TIMESTAMP,
+
+  -- Status
+  status TEXT DEFAULT 'active',  -- active, paused, ended
+
+  CONSTRAINT unique_match UNIQUE(user1_id, user2_id),
+  CONSTRAINT ordered_ids CHECK (user1_id < user2_id)
+);
+#+END_SRC
+
+** Conversation
+#+BEGIN_SRC sql
+CREATE TABLE conversations (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user1_id TEXT NOT NULL,
+  user2_id TEXT NOT NULL,
+  status TEXT DEFAULT 'active',  -- active, archived
+  started_at TIMESTAMP DEFAULT NOW(),
+  updated_at TIMESTAMP DEFAULT NOW(),
+
+  FOREIGN KEY (user1_id) REFERENCES user_profiles(clerk_user_id),
+  FOREIGN KEY (user2_id) REFERENCES user_profiles(clerk_user_id)
+);
+
+CREATE TABLE messages (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  conversation_id UUID REFERENCES conversations(id),
+  sender_id TEXT NOT NULL,
+  content TEXT NOT NULL,
+  sent_at TIMESTAMP DEFAULT NOW(),
+  read_at TIMESTAMP,
+  moderation_result JSONB,  -- AI moderation metadata
+
+  FOREIGN KEY (sender_id) REFERENCES user_profiles(clerk_user_id)
+);
+
+CREATE INDEX idx_messages_conversation ON messages(conversation_id, sent_at DESC);
+#+END_SRC
+
+** Activity
+#+BEGIN_SRC sql
+CREATE TABLE activities (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  activity_type TEXT NOT NULL,  -- coffee, dinner, mini_golf, etc.
+  creator_id TEXT NOT NULL,
+  participants TEXT[] NOT NULL,
+  scheduled_time TIMESTAMP NOT NULL,
+  location TEXT NOT NULL,
+  status TEXT DEFAULT 'scheduled',  -- scheduled, in_progress, completed, cancelled
+
+  -- Execution
+  started_at TIMESTAMP,
+  completed_at TIMESTAMP,
+
+  -- Results
+  duration_minutes INTEGER,
+  messages_exchanged INTEGER DEFAULT 0,
+  relationship_changes JSONB,
+
+  created_at TIMESTAMP DEFAULT NOW(),
+
+  FOREIGN KEY (creator_id) REFERENCES user_profiles(clerk_user_id)
+);
+
+CREATE INDEX idx_activities_scheduled ON activities(scheduled_time)
+  WHERE status = 'scheduled';
+#+END_SRC
+
+** Quest
+#+BEGIN_SRC sql
+CREATE TABLE quest_templates (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name TEXT NOT NULL,
+  description TEXT NOT NULL,
+  quest_type TEXT NOT NULL,  -- daily, weekly, milestone, seasonal
+
+  -- Requirements
+  objective_type TEXT NOT NULL,  -- visit_location, send_messages, match, etc.
+  objective_target INTEGER NOT NULL,  -- How many to complete
+
+  -- Rewards
+  xp_reward INTEGER DEFAULT 0,
+  currency_reward INTEGER DEFAULT 0,
+  item_rewards TEXT[],
+
+  -- Availability
+  available_from DATE,
+  available_until DATE,
+  requires_level INTEGER DEFAULT 1,
+
+  metadata JSONB DEFAULT '{}'
+);
+
+CREATE TABLE user_quests (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id TEXT REFERENCES user_profiles(clerk_user_id),
+  quest_template_id UUID REFERENCES quest_templates(id),
+
+  status TEXT DEFAULT 'active',  -- active, completed, expired
+  progress INTEGER DEFAULT 0,
+  target INTEGER NOT NULL,
+
+  assigned_at TIMESTAMP DEFAULT NOW(),
+  completed_at TIMESTAMP,
+  expires_at TIMESTAMP,
+
+  UNIQUE(user_id, quest_template_id, assigned_at::date)
+);
+
+CREATE INDEX idx_user_quests_active ON user_quests(user_id, status)
+  WHERE status = 'active';
+#+END_SRC
+
+** Notification
+#+BEGIN_SRC sql
+CREATE TABLE notifications (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id TEXT REFERENCES user_profiles(clerk_user_id),
+
+  type TEXT NOT NULL,
+  priority TEXT DEFAULT 'medium',  -- critical, high, medium, low
+
+  title TEXT NOT NULL,
+  body TEXT NOT NULL,
+  data JSONB DEFAULT '{}',
+
+  -- Delivery
+  sent_at TIMESTAMP DEFAULT NOW(),
+  delivered_at TIMESTAMP,
+  read_at TIMESTAMP,
+
+  -- Actions
+  action_url TEXT,
+  action_taken BOOLEAN DEFAULT false
+);
+
+CREATE INDEX idx_notifications_unread ON notifications(user_id, sent_at DESC)
+  WHERE read_at IS NULL;
+#+END_SRC
+
+** Report & Safety
+#+BEGIN_SRC sql
+CREATE TABLE reports (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  reporter_id TEXT REFERENCES user_profiles(clerk_user_id),
+  reported_id TEXT REFERENCES user_profiles(clerk_user_id),
+
+  reason TEXT NOT NULL,
+  details TEXT,
+  evidence TEXT[],  -- Screenshot URLs
+
+  status TEXT DEFAULT 'pending',  -- pending, reviewing, resolved
+  resolution TEXT,
+  moderator_notes TEXT,
+
+  created_at TIMESTAMP DEFAULT NOW(),
+  resolved_at TIMESTAMP
+);
+
+CREATE TABLE user_blocks (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  blocker_id TEXT REFERENCES user_profiles(clerk_user_id),
+  blocked_id TEXT REFERENCES user_profiles(clerk_user_id),
+  blocked_at TIMESTAMP DEFAULT NOW(),
+
+  UNIQUE(blocker_id, blocked_id)
+);
+
+CREATE INDEX idx_blocks_blocker ON user_blocks(blocker_id);
+#+END_SRC
+
+** Analytics Events
+#+BEGIN_SRC sql
+CREATE TABLE analytics_events (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id TEXT REFERENCES user_profiles(clerk_user_id),
+
+  event_type TEXT NOT NULL,
+  event_data JSONB DEFAULT '{}',
+
+  session_id UUID,
+  timestamp TIMESTAMP DEFAULT NOW(),
+
+  -- Context
+  platform TEXT,
+  app_version TEXT,
+  device_info JSONB
+);
+
+CREATE INDEX idx_analytics_events_type ON analytics_events(event_type, timestamp DESC);
+CREATE INDEX idx_analytics_events_user ON analytics_events(user_id, timestamp DESC);
+#+END_SRC
+
+* State Machines
+
+** Encounter State Machine
+#+BEGIN_SRC
+┌─────────┐
+│  IDLE   │ (Normal exploration)
+└────┬────┘
+     │ [Encounter triggered]
+     ↓
+┌─────────────┐
+│ ENCOUNTERING│ (Show profile, ice breaker)
+└──────┬──────┘
+       │
+       ├─ [Say Hi] → ┌──────────────┐
+       │              │ CONVERSING   │
+       │              └──────┬───────┘
+       │                     │
+       │                     ├─ [Match Request] → ┌─────────────┐
+       │                     │                     │ MATCH_PENDING│
+       │                     │                     └──────┬──────┘
+       │                     │                            │
+       │                     │         [Mutual Yes] ─────→│
+       │                     │                            ↓
+       │                     │                     ┌──────────┐
+       │                     │                     │ MATCHED  │
+       │                     │                     └──────────┘
+       │                     │
+       │                     └─ [Keep Walking] ──→ IDLE
+       │
+       ├─ [Play Game] → ┌──────────┐
+       │                 │ MINI_GAME│
+       │                 └─────┬────┘
+       │                       │
+       │                       └─ [Game End] → [Match Request or IDLE]
+       │
+       └─ [Keep Walking] ──────→ IDLE
+#+END_SRC
+
+** Activity State Machine
+#+BEGIN_SRC
+┌───────────┐
+│ SCHEDULED │
+└─────┬─────┘
+      │
+      ├─ [Time window opens] → ┌────────────┐
+      │                         │ READY      │
+      │                         └─────┬──────┘
+      │                               │
+      │                               ├─ [All participants check in]
+      │                               ↓
+      │                         ┌────────────┐
+      │                         │ IN_PROGRESS│
+      │                         └─────┬──────┘
+      │                               │
+      │                               ├─ [Activity completed]
+      │                               ↓
+      │                         ┌───────────┐
+      │                         │ COMPLETED │
+      │                         └───────────┘
+      │
+      ├─ [Cancelled before window] → ┌───────────┐
+      │                               │ CANCELLED │
+      │                               └───────────┘
+      │
+      └─ [No-show / timeout] ──────→ ┌──────────┐
+                                      │ NO_SHOW  │
+                                      └──────────┘
+#+END_SRC
+
+** Relationship State Machine
+#+BEGIN_SRC
+┌────────────┐
+│ ENCOUNTERED│ (Met once)
+└──────┬─────┘
+       │ [3 conversations]
+       ↓
+┌─────────────┐
+│ ACQUAINTANCE│
+└──────┬──────┘
+       │ [5 activities OR strong positive interactions]
+       ↓
+┌────────┐
+│ FRIEND │
+└────┬───┘
+     │
+     ├─ [20+ interactions, high compatibility] → ┌─────────────┐
+     │                                            │ CLOSE_FRIEND│
+     │                                            └─────────────┘
+     │
+     └─ [Mutual romantic interest indicated] ──→ ┌───────┐
+                                                  │ CRUSH │
+                                                  └───┬───┘
+                                                      │ [5+ dates]
+                                                      ↓
+                                                  ┌────────┐
+                                                  │ DATING │
+                                                  └───┬────┘
+                                                      │ [Commitment milestone]
+                                                      ↓
+                                                  ┌─────────┐
+                                                  │ PARTNER │
+                                                  └─────────┘
+
+(Any state can transition to ENDED or PAUSED by user action)
+#+END_SRC
+
+** User Session State Machine
+#+BEGIN_SRC
+┌────────┐
+│ LOGGED │
+│  OUT   │
+└───┬────┘
+    │ [Login]
+    ↓
+┌────────┐
+│ LOADING│ (Load profile, world, state)
+└───┬────┘
+    │
+    ↓
+┌────────┐
+│ ACTIVE │ (Normal gameplay)
+└───┬────┘
+    │
+    ├─ [Encounter triggered] → ENCOUNTERING → (back to ACTIVE)
+    │
+    ├─ [Activity starts] ────→ IN_ACTIVITY → (back to ACTIVE)
+    │
+    ├─ [Open menu] ─────────→ MENU → (back to ACTIVE)
+    │
+    ├─ [Idle 5+ min] ───────→ IDLE → (show "Still there?" prompt)
+    │                                  │
+    │                                  ├─ [Yes] → ACTIVE
+    │                                  └─ [No response] → AUTO_LOGOUT
+    │
+    └─ [Manual logout] ─────→ LOGGED_OUT
+#+END_SRC
+
+* Edge Cases and Error Handling
+
+** Network and Connectivity
+
+*** Edge Case 1: Network Failure During Encounter
+**** Scenario
+- User encounters another user
+- Network connection lost mid-conversation
+
+**** Handling
+1. Detect connection loss
+2. Show "Connection lost" banner
+3. Buffer messages locally
+4. Attempt reconnection with exponential backoff
+5. If reconnected within 2 minutes:
+   - Sync buffered messages
+   - Resume encounter
+6. If not reconnected:
+   - Save encounter state to local storage
+   - Show "Saved draft" notification
+   - When back online: Option to "Continue conversation"
+
+*** Edge Case 2: Database Write Failure
+**** Scenario
+- User completes activity
+- Database write fails (timeout, constraint violation)
+
+**** Handling
+1. Catch database error
+2. Log error with context
+3. Queue operation for retry:
+   #+BEGIN_SRC python
+   retry_queue.add({
+     'operation': 'save_activity_completion',
+     'data': activity_data,
+     'attempts': 0,
+     'max_attempts': 5
+   })
+   #+END_SRC
+4. Show user: "Saving... please wait"
+5. Retry with exponential backoff
+6. If all retries fail:
+   - Save to local persistent storage
+   - Show: "Changes will sync when connection improves"
+   - Background job retries when app reopens
+
+** Race Conditions
+
+*** Edge Case 3: Simultaneous Match Requests
+**** Scenario
+- User A and User B both request match at same time
+- Could create duplicate match records
+
+**** Handling
+1. Use database constraint: =UNIQUE(user1_id, user2_id)= with ordered IDs
+2. Handle unique violation in code:
+   #+BEGIN_SRC python
+   try:
+       create_match(user1, user2)
+   except UniqueViolationError:
+       # Match already exists, just update status
+       update_match_status(user1, user2, 'confirmed')
+   #+END_SRC
+3. Use database transactions
+4. Optimistic locking with version numbers
+
+*** Edge Case 4: Activity Booking Conflict
+**** Scenario
+- User tries to book activity at same time as another activity
+
+**** Handling
+1. Before creating activity invitation:
+   #+BEGIN_SRC sql
+   SELECT COUNT(*) FROM activities
+   WHERE creator_id = current_user
+   AND status = 'scheduled'
+   AND scheduled_time BETWEEN :start_time - INTERVAL '2 hours'
+                          AND :start_time + INTERVAL '2 hours'
+   #+END_SRC
+2. If conflict found:
+   - Show warning: "You have another activity at [time]"
+   - Option to cancel existing or choose different time
+3. Enforce max concurrent activities (3)
+
+** User Behavior Edge Cases
+
+*** Edge Case 5: User Goes Offline During Activity
+**** Scenario
+- Activity in progress
+- One participant's app crashes or they go offline
+
+**** Handling
+1. Detect participant disconnection (heartbeat timeout)
+2. Pause activity timer
+3. Show to remaining participants: "[Name] disconnected"
+4. Wait 3 minutes
+5. Options:
+   - "Wait for [Name]" (extends wait)
+   - "End Activity" (partial credit)
+6. If participant returns within window:
+   - Resume activity
+   - Compensate for lost time
+7. If timeout:
+   - End activity
+   - Partial rewards to present participants
+   - Log no-show for disconnected user
+
+*** Edge Case 6: Spam Messages
+**** Scenario
+- User sends 20 messages in 10 seconds
+- Could be harassment or bot behavior
+
+**** Handling
+1. Rate limiting:
+   #+BEGIN_SRC python
+   RATE_LIMIT = 5  # messages
+   RATE_WINDOW = 10  # seconds
+
+   if count_recent_messages(user, RATE_WINDOW) > RATE_LIMIT:
+       raise RateLimitError("Slow down! Wait a few seconds.")
+   #+END_SRC
+2. Show warning to user
+3. Implement exponential backoff
+4. If persists:
+   - Temporary chat timeout (5 minutes)
+   - Flag for review
+5. Log incident
+
+*** Edge Case 7: User Deletes Account Mid-Conversation
+**** Scenario
+- User A deleting account
+- User B has active conversation with User A
+
+**** Handling
+1. Soft delete user profile:
+   #+BEGIN_SRC sql
+   UPDATE user_profiles
+   SET deleted_at = NOW(),
+       is_online = false
+   WHERE clerk_user_id = :user_id
+   #+END_SRC
+2. Anonymize data:
+   - Replace display_name with "Deleted User"
+   - Remove photos
+   - Clear personal info
+3. Keep conversation history (with anonymized sender)
+4. Remove from:
+   - Encounter pool
+   - Active activities
+   - Friends lists
+5. Notify matches: "This user has left CatchFeelings"
+6. Allow 30-day grace period for account recovery
+
+** Game Logic Edge Cases
+
+*** Edge Case 8: Negative Relationship Meter
+**** Scenario
+- Multiple no-shows and long inactivity
+- Relationship meter drops below 0
+
+**** Handling
+1. Clamp at 0: =relationship.friendship = max(0, new_value)=
+2. At 0 friendship for 30 days:
+   - Suggest: "It seems you've lost touch. Archive this connection?"
+   - Don't force, let user decide
+3. If both users inactive for 90 days:
+   - Auto-archive relationship
+   - Can be restored if either user reaches out
+
+*** Edge Case 9: Level Up During Activity
+**** Scenario
+- User gains enough XP mid-activity to level up
+- Level up animation would interrupt gameplay
+
+**** Handling
+1. Queue level up event:
+   #+BEGIN_SRC python
+   if user.xp >= xp_for_next_level(user.level):
+       level_up_queue.add(user.id)
+       # Don't process now
+   #+END_SRC
+2. Continue activity uninterrupted
+3. After activity completes:
+   - Show level up animation
+   - Display all rewards
+4. If multiple level ups: Show combined celebration
+
+*** Edge Case 10: Collision with Another Player
+**** Scenario
+- Two real players walk into same space in game world
+
+**** Handling
+1. Detect bounding box overlap
+2. Don't prevent movement (not solid collision)
+3. Instead, trigger encounter:
+   - "You bumped into [Name]!"
+   - Instant encounter opportunity
+   - Higher chance of match (serendipity bonus)
+4. If declined, allow overlap for 5 seconds
+5. Slight repulsion force to naturally separate avatars
+
+** Moderation Edge Cases
+
+*** Edge Case 11: False Positive in Content Moderation
+**** Scenario
+- AI flags legitimate message as inappropriate
+- "I love your enthusiasm!" flagged for "love"
+
+**** Handling
+1. Use confidence score from AI:
+   - High confidence (>0.9): Block
+   - Medium confidence (0.6-0.9): Warn but allow
+   - Low confidence (<0.6): Allow, log for review
+2. User can appeal:
+   - "This was flagged by mistake"
+   - Human review
+3. Feedback loop improves AI over time
+
+*** Edge Case 12: Coordinated Harassment
+**** Scenario
+- Multiple accounts harassing one user
+- Circumventing blocks
+
+**** Handling
+1. Pattern detection:
+   #+BEGIN_SRC python
+   def detect_harassment_campaign(target_user):
+       recent_blocks = count_blocks_by_user(target_user, days=7)
+       if recent_blocks > 5:
+           flag_for_review(target_user, "Multiple blocks")
+
+       reporters = get_reporters_of_user(target_user)
+       if account_age_similar(reporters) and creation_time_close(reporters):
+           flag_suspicious_pattern()
+   #+END_SRC
+2. Auto-escalate to human moderator
+3. Investigate related accounts (IP, device fingerprint)
+4. Mass ban if coordinated attack confirmed
+5. Notify target user of action taken
+
+** Data Consistency Edge Cases
+
+*** Edge Case 13: Clock Skew / Timezone Issues
+**** Scenario
+- User travels across timezones
+- Activity scheduled in old timezone
+
+**** Handling
+1. Store all timestamps in UTC
+2. Convert to user's local time for display
+3. For scheduled activities:
+   - Store scheduled_time in UTC
+   - Show in user's current timezone
+   - Reminder notifications use current location time
+4. Quest reset times:
+   - Use UTC midnight for consistency
+   - Or use user's signup timezone
+
+*** Edge Case 14: Stale Data in UI
+**** Scenario
+- User has app open for hours
+- Another user updates profile
+- Old data still showing
+
+**** Handling
+1. Use Supabase Realtime subscriptions for critical data:
+   - Active conversations
+   - Activity status
+   - Online status
+2. Periodic refresh for non-critical data:
+   - Profile data (every 5 minutes)
+   - Quest progress (on app foreground)
+3. Cache invalidation on relevant events:
+   - Profile updated → refresh profile data
+   - Match confirmed → refresh connections list
+4. Visual indicator of data age:
+   - "Last updated 5 minutes ago"
+
+* Performance Considerations
+
+** Optimization Strategies
+
+*** Database Query Optimization
+1. *Indexes* - Add indexes for common queries:
+   - User location (spatial index)
+   - Active users (WHERE is_online = true)
+   - Unread messages
+   - Scheduled activities
+
+2. *Query Patterns*
+   #+BEGIN_SRC sql
+   -- BAD: N+1 query
+   for user in users:
+       get_user_profile(user.id)
+
+   -- GOOD: Batch query
+   SELECT * FROM user_profiles WHERE id IN (:user_ids)
+   #+END_SRC
+
+3. *Connection Pooling* - Reuse database connections
+4. *Prepared Statements* - Reduce query parsing time
+
+*** Proximity Search Optimization
+1. *Spatial Indexing* - PostGIS for geographic queries
+   #+BEGIN_SRC sql
+   -- Use spatial index for nearby users
+   SELECT * FROM user_profiles
+   WHERE ST_DWithin(
+     ST_Point(position_x, position_y)::geography,
+     ST_Point(:player_x, :player_y)::geography,
+     1000  -- meters
+   )
+   AND is_online = true
+   LIMIT 10;
+   #+END_SRC
+
+2. *Grid-Based Bucketing* - Divide world into zones
+   - Only query users in same zone or adjacent zones
+   - Reduces search space
+
+3. *Caching* - Cache nearby users for 30 seconds
+   - Reduces database hits
+   - Background refresh
+
+*** Rendering Optimization
+
+1. *Viewport Culling* - Only render visible tiles
+   #+BEGIN_SRC javascript
+   const visibleTiles = tiles.filter(tile =>
+     tile.x + tileSize > cameraX &&
+     tile.x < cameraX + screenWidth &&
+     tile.y + tileSize > cameraY &&
+     tile.y < cameraY + screenHeight
+   );
+   #+END_SRC
+
+2. *Sprite Batching* - Combine draw calls
+3. *Asset Optimization*
+   - Use sprite sheets
+   - Compress images (WebP)
+   - Lazy load assets
+
+4. *Frame Rate Management*
+   - Cap at 60 FPS
+   - Skip rendering if behind schedule
+   - Reduce quality on low-end devices
+
+*** Realtime Updates Optimization
+
+1. *Rate Limiting* - Position updates every 2 seconds, not every frame
+2. *Delta Compression* - Send only changed data
+3. *Channel Management* - Subscribe only to relevant channels:
+   - Own conversations
+   - Nearby users (only in encounter zones)
+   - Active activities
+
+*** Memory Management
+
+1. *Conversation History* - Load last 50 messages, lazy load older
+2. *World Tiles* - Unload far-away chunks
+3. *Image Caching* - Limit cache size, use LRU eviction
+4. *Event Listeners* - Clean up on unmount
+
+*** Scalability Targets
+
+| Metric | Target | Strategy |
+|--------|--------|----------|
+| Concurrent users | 10,000+ | Horizontal scaling, load balancing |
+| Messages/second | 1,000+ | Message queue (Redis/RabbitMQ) |
+| Database queries | <100ms p95 | Indexes, connection pooling, caching |
+| Encounter matching | <500ms | Cached proximity data, spatial index |
+| Activity load time | <2s | Lazy loading, CDN for assets |
+| Battery life | 3+ hours | Reduce GPS polling, optimize rendering |
+
+* Security Considerations
+
+** Authentication and Authorization
+
+*** Secure Token Management
+1. *JWTs* from Clerk
+   - Short-lived access tokens (15 min)
+   - Refresh tokens stored securely
+2. *Token Validation* - Verify on every API call
+3. *Scope-Based Access* - Check permissions for operations
+
+*** Row-Level Security (RLS)
+#+BEGIN_SRC sql
+-- Users can only read their own profile
+CREATE POLICY user_profile_select ON user_profiles
+  FOR SELECT USING (clerk_user_id = auth.uid());
+
+-- Users can only update their own profile
+CREATE POLICY user_profile_update ON user_profiles
+  FOR UPDATE USING (clerk_user_id = auth.uid());
+
+-- Users can only see messages in their conversations
+CREATE POLICY messages_select ON messages
+  FOR SELECT USING (
+    conversation_id IN (
+      SELECT id FROM conversations
+      WHERE user1_id = auth.uid() OR user2_id = auth.uid()
+    )
+  );
+#+END_SRC
+
+** Data Protection
+
+*** PII Encryption
+1. *At Rest* - Database encryption (AES-256)
+2. *In Transit* - TLS 1.3 for all connections
+3. *Sensitive Fields* - Additional encryption for:
+   - Email addresses
+   - Phone numbers
+   - Real-time location (approximate, not exact)
+
+*** Data Minimization
+- Don't store unnecessary data
+- Anonymize analytics data
+- Delete old data (GDPR compliance):
+  - Message content after 2 years
+  - Location history after 90 days
+  - Deleted accounts after 30 days
+
+** Input Validation
+
+*** Prevent Injection Attacks
+1. *SQL Injection* - Use parameterized queries
+   #+BEGIN_SRC python
+   # BAD
+   query = f"SELECT * FROM users WHERE name = '{user_input}'"
+
+   # GOOD
+   query = "SELECT * FROM users WHERE name = %s"
+   cursor.execute(query, (user_input,))
+   #+END_SRC
+
+2. *XSS* - Sanitize user input in messages and bio
+   #+BEGIN_SRC javascript
+   import DOMPurify from 'dompurify';
+   const clean = DOMPurify.sanitize(userInput);
+   #+END_SRC
+
+3. *Validate Input*
+   #+BEGIN_SRC python
+   def validate_message(content):
+       if not content or len(content) > 500:
+           raise ValidationError("Invalid message length")
+
+       if contains_script_tags(content):
+           raise ValidationError("Invalid content")
+
+       return content
+   #+END_SRC
+
+** Rate Limiting
+
+*** API Rate Limits
+#+BEGIN_SRC
+Unauthenticated:
+  - 10 requests/minute
+
+Authenticated:
+  - 100 requests/minute (general)
+  - 10 matches/hour (prevent spam matching)
+  - 5 messages/10 seconds (prevent spam messages)
+  - 3 reports/hour (prevent abuse)
+
+Premium:
+  - 200 requests/minute
+#+END_SRC
+
+*** Implementation
+#+BEGIN_SRC python
+from redis import Redis
+
+redis = Redis()
+
+def check_rate_limit(user_id, action, limit, window):
+    key = f"rate_limit:{user_id}:{action}"
+    current = redis.incr(key)
+
+    if current == 1:
+        redis.expire(key, window)
+
+    if current > limit:
+        raise RateLimitError(f"Too many {action} requests")
+
+    return current
+#+END_SRC
+
+** Location Privacy
+
+*** Fuzzy Location
+1. Don't show exact coordinates
+2. Round to nearest 100m grid
+3. Show "Nearby" or "500m away" instead of exact distance
+4. Only reveal precise location after mutual match
+
+*** Location Spoofing Detection
+1. Check for impossible movement (teleportation)
+2. Validate location against IP geolocation (loose check)
+3. Flag suspicious patterns for review
+
+** Prevent Cheating
+
+*** XP/Currency Manipulation
+1. *Server-Side Validation* - Never trust client
+2. *Sanity Checks*
+   #+BEGIN_SRC python
+   def award_xp(user, amount, reason):
+       max_xp_per_action = {
+           'message': 1,
+           'match': 30,
+           'activity': 100
+       }
+
+       if amount > max_xp_per_action.get(reason, 0):
+           log_suspicious_activity(user, f"XP amount too high: {amount}")
+           return
+
+       update_user_xp(user, amount)
+   #+END_SRC
+
+3. *Audit Logging* - Track all XP/currency changes
+
+*** Ghost Encounters
+- Prevent matching with fake/test accounts
+- Verify users before entering encounter pool:
+  - Email verified
+  - Profile completed
+  - Active within last 7 days
+
+** Third-Party Security
+
+*** Dependency Management
+1. Regular security audits (npm audit, Snyk)
+2. Keep dependencies updated
+3. Review dependency permissions
+
+*** API Keys
+1. Environment variables, never in code
+2. Separate keys for dev/staging/prod
+3. Rotate keys regularly
+4. Restrict API key permissions (least privilege)
+
+* Analytics and Telemetry
+
+** Events to Track
+
+*** User Acquisition
+- =user_signed_up= - Registration source, device
+- =onboarding_completed= - Time to complete
+- =onboarding_dropped= - Where they quit
+
+*** Engagement
+- =session_started= - Daily active users
+- =session_ended= - Session duration
+- =location_visited= - Which zones popular
+- =encounter_triggered= - Frequency
+- =encounter_outcome= - Matched/skipped/ghosted
+- =message_sent= - Conversation activity
+- =activity_completed= - Which activities popular
+
+*** Retention
+- =user_returned= - Day 1, 7, 30 retention
+- =quest_completed= - Completion rates
+- =streak_achieved= - Login streaks
+
+*** Monetization (Future)
+- =premium_viewed= - Interest in premium
+- =purchase_made= - Conversion
+- =item_purchased= - What's popular
+
+*** Technical
+- =error_occurred= - Bugs, crashes
+- =performance_slow= - Slow queries, render times
+- =feature_used= - Feature adoption
+
+** Implementation
+
+*** Event Schema
+#+BEGIN_SRC javascript
+{
+  "event_type": "encounter_triggered",
+  "timestamp": "2025-11-19T14:30:00Z",
+  "user_id": "user_123",
+  "session_id": "session_456",
+  "properties": {
+    "location": "coffee_district",
+    "encounter_id": "enc_789",
+    "other_user_id": "user_321"  // anonymized in analytics
+  },
+  "context": {
+    "platform": "ios",
+    "app_version": "1.2.0",
+    "device_model": "iPhone 14"
+  }
+}
+#+END_SRC
+
+*** Privacy-First Analytics
+1. *Anonymize* - Hash user IDs in analytics database
+2. *Aggregate* - Don't export individual user data
+3. *Retention* - Delete raw events after 90 days, keep aggregates
+4. *Opt-Out* - Allow users to disable analytics
+
+** Key Metrics Dashboard
+
+*** North Star Metric
+*Meaningful Connections Created*
+- Definition: Relationships that reach "Friend" stage or higher
+- Target: 30% of matches become friends
+
+*** Supporting Metrics
+1. *Acquisition*
+   - Daily signups
+   - Signup conversion rate
+
+2. *Activation*
+   - % completing onboarding
+   - % having first encounter
+   - Time to first match
+
+3. *Engagement*
+   - DAU / MAU ratio (target >30%)
+   - Avg session length (target >15 min)
+   - Messages per DAU (target >10)
+
+4. *Retention*
+   - Day 1: 50%
+   - Day 7: 30%
+   - Day 30: 20%
+
+5. *Quality*
+   - Match → Conversation rate (target >60%)
+   - Match → Friend rate (target >30%)
+   - Avg relationship stage
+   - Report rate (lower is better, target <1%)
+
+** A/B Testing Framework
+
+*** Test Examples
+1. *Encounter Rate*
+   - A: 5% chance per 10s
+   - B: 10% chance per 10s
+   - Metric: Matches per user
+
+2. *Ice Breaker Format*
+   - A: Question format
+   - B: Statement format
+   - Metric: Conversation start rate
+
+3. *Relationship Meter Visibility*
+   - A: Always visible
+   - B: Hidden until Friend stage
+   - Metric: Relationship progression rate
+
+*** Implementation
+#+BEGIN_SRC python
+def get_variant(user_id, experiment_name):
+    # Consistent hashing for user assignment
+    hash_val = hash(f"{user_id}:{experiment_name}")
+    return "A" if hash_val % 2 == 0 else "B"
+
+# Usage
+encounter_rate = 0.05 if get_variant(user.id, "encounter_rate") == "A" else 0.10
+#+END_SRC
+
+---
+
+* Appendix: Future Considerations
+
+** AI/ML Opportunities
+1. *Compatibility Prediction* - ML model to predict match success
+2. *Conversation Suggestions* - GPT-powered ice breakers based on profiles
+3. *Activity Recommendations* - Personalized suggestions
+4. *Moderation Automation* - Better toxic content detection
+
+** Platform Expansion
+1. *Web Version* - Desktop gameplay with keyboard controls
+2. *Smartwatch* - Quick swipe notifications
+3. *AR Mode* - See users in real world via camera
+
+** Social Features
+1. *Friend System* - Non-romantic connections
+2. *Group Quests* - Team up with friends
+3. *Leaderboards* - Social competition
+4. *User-Generated Content* - Custom avatars, locations
+
+** Advanced Game Mechanics
+1. *Seasonal Events* - Holiday-themed content
+2. *Story Mode* - NPC-driven narratives
+3. *Housing System* - Full Sims-style home building
+4. *Economy* - Trading, marketplace
+
+---
+
+*End of Game Logic Document*
+
+_This document should be treated as a living document and updated as systems are implemented and iterated upon._
