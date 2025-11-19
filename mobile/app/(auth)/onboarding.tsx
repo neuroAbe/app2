@@ -3,7 +3,7 @@ import { useRouter } from 'expo-router';
 import { useUser } from '@clerk/clerk-expo';
 import { useState } from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
-import { supabase } from '../../lib/supabase';
+import { useSupabaseClient } from '../../lib/supabase';
 
 const INTERESTS_OPTIONS = [
   'Gaming', 'Music', 'Art', 'Travel', 'Fitness', 'Cooking',
@@ -18,6 +18,7 @@ const AVATAR_COLORS = [
 export default function OnboardingPage() {
   const router = useRouter();
   const { user } = useUser();
+  const supabase = useSupabaseClient();
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
