@@ -145,7 +145,7 @@ export default function SignInPage() {
                     onChangeText={setPassword}
                     placeholder="••••••••"
                     placeholderTextColor="#999"
-                    secureTextEntry
+                    secureTextEntry={true}
                   />
                 </View>
 
@@ -185,7 +185,7 @@ export default function SignInPage() {
                     placeholder="123456"
                     placeholderTextColor="#999"
                     keyboardType="number-pad"
-                    autoFocus
+                    autoFocus={true}
                   />
                 </View>
 
