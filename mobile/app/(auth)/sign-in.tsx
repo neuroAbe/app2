@@ -13,23 +13,39 @@ export default function SignInPage() {
   const [loading, setLoading] = useState(false);
 
   const onSignInPress = async () => {
-    if (!isLoaded) return;
+    if (!isLoaded) {
+      console.log('Clerk not loaded yet');
+      return;
+    }
+
+    if (!emailAddress || !password) {
+      setError('Please enter email and password');
+      return;
+    }
 
     setLoading(true);
     setError('');
 
     try {
+      console.log('Attempting sign in for:', emailAddress);
       const result = await signIn.create({
         identifier: emailAddress,
         password,
       });
 
+      console.log('Sign in result:', result.status);
+
       if (result.status === 'complete') {
         await setActive({ session: result.createdSessionId });
+        console.log('Session activated, redirecting...');
         router.replace('/(tabs)/game');
+      } else {
+        console.log('Sign in incomplete, status:', result.status);
+        setError(`Sign in status: ${result.status}`);
       }
     } catch (err: any) {
-      setError(err.errors?.[0]?.message || 'Failed to sign in');
+      console.error('Sign in error:', err);
+      setError(err.errors?.[0]?.message || err.message || 'Failed to sign in');
     } finally {
       setLoading(false);
     }
