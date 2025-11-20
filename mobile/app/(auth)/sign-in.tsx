@@ -63,7 +63,7 @@ export default function SignInPage() {
 
     try {
       const result = await signIn.attemptSecondFactor({
-        strategy: 'totp',
+        strategy: 'email_code',
         code,
       });
 
@@ -148,7 +148,7 @@ export default function SignInPage() {
               <>
                 <Text style={styles.verifyTitle}>Two-Factor Authentication</Text>
                 <Text style={styles.verifySubtitle}>
-                  Enter the code from your authenticator app
+                  Enter the code sent to your email
                 </Text>
 
                 <View style={styles.inputGroup}>
