@@ -3,16 +3,37 @@ import { useSignIn } from '@clerk/clerk-expo';
 import { useRouter } from 'expo-router';
 import { useState } from 'react';
 import { LinearGradient } from 'expo-linear-gradient';
+import { useSupabaseClient } from '../../lib/supabase';
 
 export default function SignInPage() {
   const { signIn, setActive, isLoaded } = useSignIn();
   const router = useRouter();
+  const supabase = useSupabaseClient();
   const [emailAddress, setEmailAddress] = useState('');
   const [password, setPassword] = useState('');
   const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [pendingVerification, setPendingVerification] = useState(false);
+
+  const checkProfileAndRedirect = async (userId: string) => {
+    try {
+      const { data } = await supabase
+        .from('user_profiles')
+        .select('id')
+        .eq('clerk_user_id', userId)
+        .single();
+
+      if (data) {
+        router.replace('/(tabs)/game');
+      } else {
+        router.replace('/(auth)/onboarding');
+      }
+    } catch {
+      // No profile found, go to onboarding
+      router.replace('/(auth)/onboarding');
+    }
+  };
 
   const onSignInPress = async () => {
     if (!isLoaded) {
@@ -39,8 +60,8 @@ export default function SignInPage() {
 
       if (result.status === 'complete') {
         await setActive({ session: result.createdSessionId });
-        console.log('Session activated, redirecting...');
-        router.replace('/(tabs)/game');
+        console.log('Session activated, checking profile...');
+        await checkProfileAndRedirect(result.createdUserId!);
       } else if (result.status === 'needs_second_factor') {
         // Send the email code
         await signIn.prepareSecondFactor({
@@ -73,7 +94,7 @@ export default function SignInPage() {
 
       if (result.status === 'complete') {
         await setActive({ session: result.createdSessionId });
-        router.replace('/(tabs)/game');
+        await checkProfileAndRedirect(result.createdUserId!);
       } else {
         setError(`Verification status: ${result.status}`);
       }
