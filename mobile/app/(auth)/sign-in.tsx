@@ -9,8 +9,10 @@ export default function SignInPage() {
   const router = useRouter();
   const [emailAddress, setEmailAddress] = useState('');
   const [password, setPassword] = useState('');
+  const [code, setCode] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
+  const [pendingVerification, setPendingVerification] = useState(false);
 
   const onSignInPress = async () => {
     if (!isLoaded) {
@@ -39,6 +41,8 @@ export default function SignInPage() {
         await setActive({ session: result.createdSessionId });
         console.log('Session activated, redirecting...');
         router.replace('/(tabs)/game');
+      } else if (result.status === 'needs_second_factor') {
+        setPendingVerification(true);
       } else {
         console.log('Sign in incomplete, status:', result.status);
         setError(`Sign in status: ${result.status}`);
@@ -46,6 +50,32 @@ export default function SignInPage() {
     } catch (err: any) {
       console.error('Sign in error:', err);
       setError(err.errors?.[0]?.message || err.message || 'Failed to sign in');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const onVerifyPress = async () => {
+    if (!isLoaded) return;
+
+    setLoading(true);
+    setError('');
+
+    try {
+      const result = await signIn.attemptSecondFactor({
+        strategy: 'totp',
+        code,
+      });
+
+      if (result.status === 'complete') {
+        await setActive({ session: result.createdSessionId });
+        router.replace('/(tabs)/game');
+      } else {
+        setError(`Verification status: ${result.status}`);
+      }
+    } catch (err: any) {
+      console.error('2FA error:', err);
+      setError(err.errors?.[0]?.message || 'Invalid verification code');
     } finally {
       setLoading(false);
     }
@@ -67,50 +97,92 @@ export default function SignInPage() {
 
           {/* Form */}
           <View style={styles.form}>
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Email</Text>
-              <TextInput
-                style={styles.input}
-                value={emailAddress}
-                onChangeText={setEmailAddress}
-                placeholder="your@email.com"
-                placeholderTextColor="#999"
-                autoCapitalize="none"
-                keyboardType="email-address"
-              />
-            </View>
+            {!pendingVerification ? (
+              <>
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Email</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={emailAddress}
+                    onChangeText={setEmailAddress}
+                    placeholder="your@email.com"
+                    placeholderTextColor="#999"
+                    autoCapitalize="none"
+                    keyboardType="email-address"
+                  />
+                </View>
 
-            <View style={styles.inputGroup}>
-              <Text style={styles.label}>Password</Text>
-              <TextInput
-                style={styles.input}
-                value={password}
-                onChangeText={setPassword}
-                placeholder="••••••••"
-                placeholderTextColor="#999"
-                secureTextEntry
-              />
-            </View>
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Password</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={password}
+                    onChangeText={setPassword}
+                    placeholder="••••••••"
+                    placeholderTextColor="#999"
+                    secureTextEntry
+                  />
+                </View>
 
-            {error ? (
-              <Text style={styles.error}>{error}</Text>
-            ) : null}
+                {error ? (
+                  <Text style={styles.error}>{error}</Text>
+                ) : null}
 
-            <Pressable
-              style={[styles.button, loading && styles.buttonDisabled]}
-              onPress={onSignInPress}
-              disabled={loading}
-            >
-              <Text style={styles.buttonText}>
-                {loading ? 'Signing In...' : 'Sign In'}
-              </Text>
-            </Pressable>
+                <Pressable
+                  style={[styles.button, loading && styles.buttonDisabled]}
+                  onPress={onSignInPress}
+                  disabled={loading}
+                >
+                  <Text style={styles.buttonText}>
+                    {loading ? 'Signing In...' : 'Sign In'}
+                  </Text>
+                </Pressable>
 
-            <Pressable onPress={() => router.push('/(auth)/sign-up')}>
-              <Text style={styles.link}>
-                Don't have an account? <Text style={styles.linkBold}>Sign Up</Text>
-              </Text>
-            </Pressable>
+                <Pressable onPress={() => router.push('/(auth)/sign-up')}>
+                  <Text style={styles.link}>
+                    Don't have an account? <Text style={styles.linkBold}>Sign Up</Text>
+                  </Text>
+                </Pressable>
+              </>
+            ) : (
+              <>
+                <Text style={styles.verifyTitle}>Two-Factor Authentication</Text>
+                <Text style={styles.verifySubtitle}>
+                  Enter the code from your authenticator app
+                </Text>
+
+                <View style={styles.inputGroup}>
+                  <Text style={styles.label}>Verification Code</Text>
+                  <TextInput
+                    style={styles.input}
+                    value={code}
+                    onChangeText={setCode}
+                    placeholder="123456"
+                    placeholderTextColor="#999"
+                    keyboardType="number-pad"
+                    autoFocus
+                  />
+                </View>
+
+                {error ? (
+                  <Text style={styles.error}>{error}</Text>
+                ) : null}
+
+                <Pressable
+                  style={[styles.button, loading && styles.buttonDisabled]}
+                  onPress={onVerifyPress}
+                  disabled={loading}
+                >
+                  <Text style={styles.buttonText}>
+                    {loading ? 'Verifying...' : 'Verify'}
+                  </Text>
+                </Pressable>
+
+                <Pressable onPress={() => setPendingVerification(false)}>
+                  <Text style={styles.backLink}>← Back to Sign In</Text>
+                </Pressable>
+              </>
+            )}
 
             <Pressable onPress={() => router.back()}>
               <Text style={styles.backLink}>← Back to Home</Text>
@@ -180,6 +252,17 @@ const styles = StyleSheet.create({
     color: '#ef4444',
     fontSize: 14,
     marginBottom: 16,
+  },
+  verifyTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#111827',
+    marginBottom: 8,
+  },
+  verifySubtitle: {
+    fontSize: 14,
+    color: '#6b7280',
+    marginBottom: 20,
   },
   button: {
     backgroundColor: '#8b5cf6',
