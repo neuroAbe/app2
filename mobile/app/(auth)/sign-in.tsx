@@ -42,6 +42,10 @@ export default function SignInPage() {
         console.log('Session activated, redirecting...');
         router.replace('/(tabs)/game');
       } else if (result.status === 'needs_second_factor') {
+        // Send the email code
+        await signIn.prepareSecondFactor({
+          strategy: 'email_code',
+        });
         setPendingVerification(true);
       } else {
         console.log('Sign in incomplete, status:', result.status);
